@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,94 +8,100 @@
   <link rel="stylesheet" href="css/styles.css">
   <!-- Chart.js para os gráficos do dashboard de BI -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
+
 <body>
-<div class="layout">
-  <!-- BARRA LATERAL (SIDEBAR) -->
-  <aside class="sidebar">
-    <div class="sidebar-header">
-      <h2>Projeto de Siliconagem</h2>
-      <div class="user-info">
-        <div class="avatar"></div>
-        <div>
-          <p style="font-size: 13px; font-weight: 600; color: #fff;">Centro de Controle</p>
+  <div class="layout">
+    <!-- BARRA LATERAL (SIDEBAR) -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h2>Projeto de Siliconagem</h2>
+        <div class="user-info">
+          <div class="avatar"></div>
+          <div>
+            <p style="font-size: 13px; font-weight: 600; color: #fff;">Centro de Controle</p>
+          </div>
         </div>
       </div>
-    </div>
-    <nav class="sidebar-menu">
-      <ul>
-        <li class="active" data-target="planta" onclick="navigateTo('planta')">
-          <span>Visão da planta</span>
-        </li>
-        <li data-target="listaRecepcoes" onclick="navigateTo('listaRecepcoes')">
-          <span>Recepções</span>
-        </li>
-        <li data-target="solicitacoes" onclick="navigateTo('solicitacoes')">
-          <span>Solicitações</span>
-          <span id="sidebar-solicitacoes-badge" class="notif-badge-inline" style="display: none;">0</span>
-        </li>
-        <li data-target="analise" onclick="navigateTo('analise')">
-          <span>Análise de performace<span>
-        </li>
-        <li>
-          <span>Manutenção</span>
-        </li>
-        <li>
-          <span>Relatórios</span>
-        </li>
-        <li onclick="confirmarLogout()">
-          <span>Sair / Mudar Perfil</span>
-        </li>
-      </ul>
-    </nav>
-    <div class="legend">
-      <h3>LEGENDA DE STATUS</h3>
-      <ul>
-        <li><span class="dot dark" style="background: #334155;"></span> Não Iniciado</li>
-        <li><span class="dot yellow"></span> Em Andamento</li>
-        <li><span class="dot purple"></span> Aguardando Recepção</li>
-        <li><span class="dot green"></span> Recepção Aprovada</li>
-        <li><span class="dot red"></span> Recepção Rejeitada</li>
-      </ul>
-    </div>
-  </aside>
-
-  <div class="main-wrapper">
-    <!-- BARRA DE NAVEGAÇÃO SUPERIOR (NAVBAR) -->
-    <header class="top-navbar">
-      <nav class="top-menu">
-        <a href="#" class="active" data-target="planta" onclick="navigateTo('planta')">Visão da Planta</a>
-        <a href="#" data-target="listaRecepcoes" onclick="navigateTo('listaRecepcoes')">Recepções</a>
-        <a href="#" id="topnav-solicitacoes" data-target="solicitacoes" onclick="navigateTo('solicitacoes')">
-          Solicitações
-          <span id="topnav-solicitacoes-badge" class="notif-badge-inline" style="display: none;">0</span>
-        </a>
-        <a href="#" data-target="analise" onclick="navigateTo('analise')">Análise de Performance</a>
+      <nav class="sidebar-menu">
+        <ul>
+          <li class="active" data-target="planta" onclick="navigateTo('planta')">
+            <span>Visão da planta</span>
+          </li>
+          <li data-target="listaRecepcoes" onclick="navigateTo('listaRecepcoes')">
+            <span>Recepções</span>
+          </li>
+          <li data-target="solicitacoes" onclick="navigateTo('solicitacoes')">
+            <span>Solicitações</span>
+            <span id="sidebar-solicitacoes-badge" class="notif-badge-inline" style="display: none;">0</span>
+          </li>
+          <li data-target="analise" onclick="navigateTo('analise')">
+            <span>Análise de performace<span>
+          </li>
+          <li>
+            <span>Manutenção</span>
+          </li>
+          <li>
+            <span>Relatórios</span>
+          </li>
+          <li onclick="confirmarLogout()">
+            <span>Sair / Mudar Perfil</span>
+          </li>
+        </ul>
       </nav>
-      <div class="top-actions">
-        <div class="progress-bar">
-          <span>PROGRESSO TOTAL</span>
-          <div class="bar"><div class="fill" id="barra-progresso-total" style="width: 0%;"></div></div>
-          <span id="texto-progresso-total">0%</span>
-        </div>
-        <!-- Botão Sininho com Ícone SVG Moderno -->
-        <button class="icon-btn-notif" id="btn-notificacoes" title="Ver Solicitações Pendentes" onclick="navigateTo('solicitacoes')">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-          <span id="notif-badge" class="notif-badge" style="display: none;">0</span>
-        </button>
-        <div class="user-circle">SA</div>
+      <div class="legend">
+        <h3>LEGENDA DE STATUS</h3>
+        <ul>
+          <li><span class="dot dark" style="background: #334155;"></span> Não Iniciado</li>
+          <li><span class="dot yellow"></span> Em Andamento</li>
+          <li><span class="dot purple"></span> Aguardando Recepção</li>
+          <li><span class="dot green"></span> Recepção Aprovada</li>
+          <li><span class="dot red"></span> Recepção Rejeitada</li>
+        </ul>
       </div>
-    </header>
+    </aside>
 
-    <!-- CONTEÚDO DINÂMICO (Gerenciado pelos módulos em /js) -->
-    <main id="app-content">
-      <!-- O JS injetará as telas dinamicamente aqui -->
-    </main>
+    <div class="main-wrapper">
+      <!-- BARRA DE NAVEGAÇÃO SUPERIOR (NAVBAR) -->
+      <header class="top-navbar">
+        <nav class="top-menu">
+          <a href="#" class="active" data-target="planta" onclick="navigateTo('planta')">Visão da Planta</a>
+          <a href="#" data-target="listaRecepcoes" onclick="navigateTo('listaRecepcoes')">Recepções</a>
+          <a href="#" id="topnav-solicitacoes" data-target="solicitacoes" onclick="navigateTo('solicitacoes')">
+            Solicitações
+            <span id="topnav-solicitacoes-badge" class="notif-badge-inline" style="display: none;">0</span>
+          </a>
+          <a href="#" data-target="analise" onclick="navigateTo('analise')">Análise de Performance</a>
+        </nav>
+        <div class="top-actions">
+          <div class="progress-bar">
+            <span>PROGRESSO TOTAL</span>
+            <div class="bar">
+              <div class="fill" id="barra-progresso-total" style="width: 0%;"></div>
+            </div>
+            <span id="texto-progresso-total">0%</span>
+          </div>
+          <!-- Botão Sininho com Ícone SVG Moderno -->
+          <button class="icon-btn-notif" id="btn-notificacoes" title="Ver Solicitações Pendentes"
+            onclick="navigateTo('solicitacoes')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+            <span id="notif-badge" class="notif-badge" style="display: none;">0</span>
+          </button>
+          <div class="user-circle">SA</div>
+        </div>
+      </header>
+
+      <!-- CONTEÚDO DINÂMICO (Gerenciado pelos módulos em /js) -->
+      <main id="app-content">
+        <!-- O JS injetará as telas dinamicamente aqui -->
+      </main>
+    </div>
   </div>
-</div>
 
-<!--
+  <!--
   Scripts do sistema, em ordem de dependência:
   1. config.js       -> dados/constantes (não depende de nada)
   2. state.js         -> estado global + persistência (depende de config e utils)
@@ -113,21 +120,24 @@
   15. analise.js        -> gráfico de BI
   16. main.js           -> inicialização (SEMPRE POR ÚLTIMO)
 -->
-<script src="js/config.js"></script>
-<script src="js/utils.js"></script>
-<script src="js/state.js"></script>
-<script src="js/theme.js"></script>
-<script src="js/mobile-menu.js"></script>
-<script src="js/views.js"></script>
-<script src="js/navigation.js"></script>
-<script src="js/auth.js"></script>
-<script src="js/funcionarios.js"></script>
-<script src="js/permissoes.js"></script>
-<script src="js/perfil.js"></script>
-<script src="js/planta.js"></script>
-<script src="js/recepcao.js"></script>
-<script src="js/tabelas.js"></script>
-<script src="js/analise.js"></script>
-<script src="js/main.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/state.js"></script>
+  <script src="js/theme.js"></script>
+  <script src="js/mobile-menu.js"></script>
+  <script src="js/views.js"></script>
+  <script src="js/navigation.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/funcionarios.js"></script>
+  <script src="js/permissoes.js"></script>
+  <script src="js/perfil.js"></script>
+  <script src="js/planta.js"></script>
+  <script src="js/recepcao.js"></script>
+  <script src="js/tabelas.js"></script>
+  <script src="js/analise.js"></script>
+  <script src="js/main.js"></script>
 </body>
+
 </html>

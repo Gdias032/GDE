@@ -1,21 +1,10 @@
 /**
  * state.js
  * ---------------------------------------------------------------------------
- * Estado global da aplicação e persistência em localStorage.
+ * Estado global da aplicação e sincronização com Supabase.
  *
- * ⚠️ LIMITAÇÃO ARQUITETURAL IMPORTANTE — LEIA ANTES DE COLOCAR EM PRODUÇÃO:
- * Este app guarda TODOS os dados (máquinas, solicitações, permissões,
- * fotos de perfil) em localStorage, que é local a cada navegador/PC.
- * Isso significa que:
- *   - Um mantenedor no computador do Setor A e uma recepcionista no
- *     computador do Setor B NÃO compartilham os mesmos dados — cada
- *     máquina tem sua própria "planta" isolada.
- *   - Duas abas abertas ao mesmo tempo podem sobrescrever uma a outra
- *     (não há travamento/merge de escrita concorrente).
- *   - Limpar o cache do navegador apaga todo o histórico.
- * Para um sistema real de múltiplos usuários/estações, os dados
- * precisam vir de um backend (API + banco de dados), com estas mesmas
- * funções (`salvar*Storage`) substituídas por chamadas fetch().
+ * Agora, todos os dados são carregados do banco via `carregarDadosSupabase()`
+ * de forma assíncrona.
  * ---------------------------------------------------------------------------
  */
 
@@ -26,57 +15,124 @@ let mantenedorValidoAtual = null;     // funcionário validado como mantenedor a
 let recepcionadorValidoAtual = null;  // funcionário validado como recepcionador
 let meuGraficoBI = null;              // instância do Chart.js da tela de análise
 
+// Dados do banco
+let todasAsMaquinas = [];
+let solicitacoesAutorizacao = [];
+let permissoesEspeciais = {};
+
 /**
- * Gera a matriz inicial de máquinas (letras x números) definida em
- * CONFIG_PLANTA, todas com status "Não Iniciado".
+ * Carrega todos os dados iniciais do Supabase após o login.
+ * Usa joins (relações) para trazer os nomes vinculados aos IDs das tabelas.
  */
-function gerarMaquinasIniciais() {
-    const maquinas = [];
-    CONFIG_PLANTA.letras.forEach(letra => {
-        for (let i = 1; i <= CONFIG_PLANTA.maquinasPorLinha; i++) {
-            maquinas.push({
-                id: `${letra}${i}`,
-                status: 'dark',
-                andamento: 'Não Iniciado',
-                dataInicio: '',
-                dataFim: '-',
-                realizou: '-',
-                recepcionou: '',
-                obs: ''
-            });
-        }
-    });
-    return maquinas;
-}
+async function carregarDadosSupabase() {
+    // 1. Carregar Máquinas
+    const { data: maqData, error: maqError } = await supabaseClient
+        .from('maquinas_planta')
+        .select(`
+            *,
+            mantenedor:id_mantenedor_atual(nome_completo),
+            recepcionista:id_recepcionista_atual(nome_completo)
+        `)
+        .order('linha', { ascending: true })
+        .order('coluna', { ascending: true });
+    
+    if (maqError) {
+        console.error('Erro ao carregar máquinas:', maqError);
+    } else if (maqData) {
+        todasAsMaquinas = maqData.map(m => ({
+            id: m.id,
+            status: m.status_cor,
+            andamento: m.andamento,
+            realizou: m.mantenedor ? m.mantenedor.nome_completo : '-',
+            realizouId: m.id_mantenedor_atual, // Guardado para usar no update depois
+            recepcionou: m.recepcionista ? m.recepcionista.nome_completo : '',
+            recepcionouId: m.id_recepcionista_atual,
+            dataInicio: m.data_inicio ? new Date(m.data_inicio).toLocaleDateString('pt-BR') : '',
+            dataFim: m.data_fim ? new Date(m.data_fim).toLocaleDateString('pt-BR') : '-',
+            obs: m.observacoes || ''
+        }));
+    }
 
-// Carrega do localStorage ou inicializa pela primeira vez
-let todasAsMaquinas = lerStorageSeguro('silicon_maquinas', null) || gerarMaquinasIniciais();
-if (!lerStorageSeguro('silicon_maquinas', null)) {
-    salvarStorageSeguro('silicon_maquinas', todasAsMaquinas);
-}
+    // 2. Carregar Solicitações
+    const { data: solData, error: solError } = await supabaseClient
+        .from('solicitacoes_permissao')
+        .select(`
+            *,
+            solicitante:id_solicitante(matricula, nome_completo)
+        `)
+        .order('data_solicitacao', { ascending: false });
 
-let solicitacoesAutorizacao = lerStorageSeguro('silicon_solicitacoes', solicitacoesIniciais);
-let permissoesEspeciais = lerStorageSeguro('silicon_permissoes', {});
+    if (solError) {
+        console.error('Erro ao carregar solicitações:', solError);
+    } else if (solData) {
+        solicitacoesAutorizacao = solData.map(s => ({
+            id: s.id, // UUID
+            registro: s.solicitante ? s.solicitante.matricula : 'Desconhecido',
+            solicitanteId: s.id_solicitante,
+            nome: s.solicitante ? s.solicitante.nome_completo : 'Desconhecido',
+            permissao: s.tipo_permissao,
+            mensagem: s.justificativa || '',
+            status: s.status === 'PENDENTE' ? 'Pendente' : (s.status === 'APROVADA' ? 'Aprovado' : 'Recusado'),
+            data: new Date(s.data_solicitacao).toLocaleDateString('pt-BR')
+        }));
+    }
 
-/** Persiste as máquinas e atualiza a barra de progresso geral. */
-function salvarMaquinasStorage() {
-    salvarStorageSeguro('silicon_maquinas', todasAsMaquinas);
+    // 3. Carregar Permissões Especiais Ativas
+    const { data: permData, error: permError } = await supabaseClient
+        .from('permissoes_especiais')
+        .select(`
+            *,
+            usuario:id_usuario(matricula)
+        `);
+    
+    if (permError) {
+        console.error('Erro ao carregar permissões:', permError);
+    } else if (permData) {
+        permissoesEspeciais = {};
+        permData.forEach(p => {
+            if (p.usuario) {
+                permissoesEspeciais[p.usuario.matricula] = true;
+            }
+        });
+    }
+
     atualizarProgressoGeral();
-}
-
-/** Persiste as solicitações e atualiza os badges de notificação. */
-function salvarSolicitacoesStorage() {
-    salvarStorageSeguro('silicon_solicitacoes', solicitacoesAutorizacao);
     atualizarNotificacoesPendentes();
 }
 
-/** Persiste o mapa de permissões especiais concedidas pelo admin. */
-function salvarPermissoesStorage() {
-    salvarStorageSeguro('silicon_permissoes', permissoesEspeciais);
+/** Salva as alterações de uma MÁQUINA no Supabase (Update) */
+async function salvarMaquinaSupabase(maquinaId) {
+    const maq = todasAsMaquinas.find(m => m.id === maquinaId);
+    if (!maq) return false;
+
+    // Convertendo dados do front pro formato do banco (null em vez de '-' etc)
+    const dadosUpdate = {
+        status_cor: maq.status,
+        andamento: maq.andamento,
+        id_mantenedor_atual: maq.realizouId || null,
+        id_recepcionista_atual: maq.recepcionouId || null,
+        data_inicio: maq.dataInicio !== '' ? maq.dataInicioObj || new Date().toISOString() : null,
+        data_fim: maq.dataFim !== '-' ? maq.dataFimObj || new Date().toISOString() : null,
+        observacoes: maq.obs
+    };
+
+    const { error } = await supabaseClient
+        .from('maquinas_planta')
+        .update(dadosUpdate)
+        .eq('id', maquinaId);
+
+    if (error) {
+        console.error('Erro ao salvar máquina:', error);
+        return false;
+    }
+    
+    atualizarProgressoGeral();
+    return true;
 }
 
 /** Atualiza a barra/percentual de progresso geral (máquinas aprovadas / total). */
 function atualizarProgressoGeral() {
+    if (todasAsMaquinas.length === 0) return;
     const concluidas = todasAsMaquinas.filter(m => m.status === 'green').length;
     const porcentagem = Math.round((concluidas / todasAsMaquinas.length) * 100);
     const elBarra = document.getElementById('barra-progresso-total');

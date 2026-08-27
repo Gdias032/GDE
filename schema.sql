@@ -1,6 +1,17 @@
 -- Script de Criação do Banco de Dados: Silicon Core V2
 -- Recomendado para PostgreSQL (ou Supabase)
 
+-- 0. Limpeza de tabelas e enums antigos (para permitir re-execução do script)
+DROP TABLE IF EXISTS permissoes_especiais CASCADE;
+DROP TABLE IF EXISTS solicitacoes_permissao CASCADE;
+DROP TABLE IF EXISTS historico_maquinas CASCADE;
+DROP TABLE IF EXISTS maquinas_planta CASCADE;
+DROP TABLE IF EXISTS usuarios CASCADE;
+
+DROP TYPE IF EXISTS perfil_acesso_enum CASCADE;
+DROP TYPE IF EXISTS status_cor_enum CASCADE;
+DROP TYPE IF EXISTS status_solicitacao_enum CASCADE;
+
 -- 1. Criação de Enums (Opcional, mas recomendado para consistência)
 CREATE TYPE perfil_acesso_enum AS ENUM ('ADMIN', 'MANTENEDOR', 'RECEPCIONISTA');
 CREATE TYPE status_cor_enum AS ENUM ('dark', 'yellow', 'purple', 'green', 'red');
@@ -8,12 +19,11 @@ CREATE TYPE status_solicitacao_enum AS ENUM ('PENDENTE', 'APROVADA', 'REJEITADA'
 
 -- 2. Tabela: Usuarios / Funcionarios
 CREATE TABLE usuarios (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY REFERENCES auth.users(id), -- Conecta com o sistema de login nativo do Supabase
     matricula VARCHAR(50) UNIQUE NOT NULL,
     nome_completo VARCHAR(255) NOT NULL,
     cargo VARCHAR(100) NOT NULL,
     perfil_acesso perfil_acesso_enum NOT NULL,
-    senha_hash VARCHAR(255) NOT NULL,
     ativo BOOLEAN DEFAULT true,
     criado_em TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -65,3 +75,17 @@ CREATE TABLE permissoes_especiais (
     concedida_em TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     valida_ate TIMESTAMP WITH TIME ZONE
 );
+
+-- 7. Configuração de RLS (Row Level Security)
+ALTER TABLE usuarios ENABLE ROW LEVEL SECURITY;
+ALTER TABLE maquinas_planta ENABLE ROW LEVEL SECURITY;
+ALTER TABLE historico_maquinas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE solicitacoes_permissao ENABLE ROW LEVEL SECURITY;
+ALTER TABLE permissoes_especiais ENABLE ROW LEVEL SECURITY;
+
+-- Políticas Gerais (Permitir acesso total apenas para usuários autenticados no Supabase)
+CREATE POLICY "Acesso total usuarios autenticados" ON usuarios FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "Acesso total maquinas autenticadas" ON maquinas_planta FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "Acesso total historico autenticados" ON historico_maquinas FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "Acesso total solicitacoes autenticadas" ON solicitacoes_permissao FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "Acesso total permissoes autenticadas" ON permissoes_especiais FOR ALL USING (auth.role() = 'authenticated');

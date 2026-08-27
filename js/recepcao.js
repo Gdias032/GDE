@@ -99,7 +99,7 @@ function configurarTelaRecepcao() {
     }
 }
 
-function iniciarServico() {
+async function iniciarServico() {
     if (!mantenedorValidoAtual) {
         mostrarAlertaModal('Validação Requerida', 'Atenção: Apenas perfis de mantenedor com matrícula validada podem dar Start!', 'warning');
         return;
@@ -111,11 +111,15 @@ function iniciarServico() {
     maq.status = 'yellow';
     maq.andamento = 'Em Progresso';
     maq.dataInicio = new Date().toLocaleDateString('pt-BR');
+    maq.dataInicioObj = new Date().toISOString(); // Para uso no banco
     maq.dataFim = '-';
     maq.realizou = mantenedorValidoAtual.nome;
+    maq.realizouId = mantenedorValidoAtual.registro; // Registro/ID real do usuario logado
 
-    salvarMaquinasStorage();
-    configurarTelaRecepcao();
+    const sucesso = await salvarMaquinaSupabase(maq.id);
+    if (sucesso) {
+        configurarTelaRecepcao();
+    }
 }
 
 function confirmarPararServico() {
@@ -128,18 +132,21 @@ function confirmarPararServico() {
     });
 }
 
-function pararServico() {
+async function pararServico() {
     const maq = todasAsMaquinas.find(m => m.id === maquinaAtualId);
     if (!maq) return;
 
     maq.status = 'purple';
     maq.andamento = 'Aguardando Recepção';
     maq.dataFim = new Date().toLocaleDateString('pt-BR');
+    maq.dataFimObj = new Date().toISOString(); // Para o banco
     maq.obs = document.getElementById('input-obs').value;
 
-    salvarMaquinasStorage();
-    mostrarAlertaModal('Serviço Concluído', `Atuação finalizada na Máquina ${maq.id}! Status alterado para: Aguardando Recepção.`, 'success');
-    navigateTo('planta');
+    const sucesso = await salvarMaquinaSupabase(maq.id);
+    if (sucesso) {
+        mostrarAlertaModal('Serviço Concluído', `Atuação finalizada na Máquina ${maq.id}! Status alterado para: Aguardando Recepção.`, 'success');
+        navigateTo('planta');
+    }
 }
 
 /** Verifica permissão antes de tentar salvar; se não tiver, abre o fluxo de solicitação. */
@@ -151,7 +158,7 @@ function tentarSalvarRecepcao() {
     salvarRecepcao();
 }
 
-function salvarRecepcao() {
+async function salvarRecepcao() {
     if (!recepcionadorValidoAtual) {
         mostrarAlertaModal('Identificação Necessária', 'Atenção: sua matrícula precisa estar validada e com permissão de acesso para efetuar a recepção desta máquina!', 'warning');
         return;
@@ -165,19 +172,25 @@ function salvarRecepcao() {
 
     maq.obs = document.getElementById('input-obs').value;
     maq.recepcionou = recepcionadorValidoAtual.nome;
+    maq.recepcionouId = recepcionadorValidoAtual.registro === 'adm' ? null : recepcionadorValidoAtual.registro; // Admin default
 
     if (checkboxesMarcados === totalCheckboxes) {
         maq.status = 'green';
         maq.andamento = 'Recepção Aprovada';
-        mostrarAlertaModal('Recepção Aprovada', `Recepção da Máquina ${maq.id} APROVADA por ${maq.recepcionou}!`, 'success');
     } else {
         maq.status = 'red';
         maq.andamento = 'Recepção Rejeitada';
-        mostrarAlertaModal('Recepção Rejeitada', `Recepção REJEITADA por ${maq.recepcionou}. A máquina possui itens pendentes.`, 'danger');
     }
 
-    salvarMaquinasStorage();
-    navigateTo('planta');
+    const sucesso = await salvarMaquinaSupabase(maq.id);
+    if (sucesso) {
+        if (maq.status === 'green') {
+            mostrarAlertaModal('Recepção Aprovada', `Recepção da Máquina ${maq.id} APROVADA por ${maq.recepcionou}!`, 'success');
+        } else {
+            mostrarAlertaModal('Recepção Rejeitada', `Recepção REJEITADA por ${maq.recepcionou}. A máquina possui itens pendentes.`, 'danger');
+        }
+        navigateTo('planta');
+    }
 }
 
 function confirmarReabrirRecepcaoRejeitada() {
@@ -190,7 +203,7 @@ function confirmarReabrirRecepcaoRejeitada() {
     });
 }
 
-function reabrirRecepcaoRejeitada() {
+async function reabrirRecepcaoRejeitada() {
     const maq = todasAsMaquinas.find(m => m.id === maquinaAtualId);
     if (!maq) return;
 
@@ -198,7 +211,9 @@ function reabrirRecepcaoRejeitada() {
     maq.andamento = 'Aguardando Recepção';
     maq.obs += ` [Status reaberto pelo Admin em ${new Date().toLocaleDateString('pt-BR')}]`;
 
-    salvarMaquinasStorage();
-    mostrarAlertaModal('Status Alterado', `A Máquina ${maq.id} foi reaberta e retornou ao status "Aguardando Recepção".`, 'info');
-    navigateTo('planta');
+    const sucesso = await salvarMaquinaSupabase(maq.id);
+    if (sucesso) {
+        mostrarAlertaModal('Status Alterado', `A Máquina ${maq.id} foi reaberta e retornou ao status "Aguardando Recepção".`, 'info');
+        navigateTo('planta');
+    }
 }

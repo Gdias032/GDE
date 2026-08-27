@@ -44,7 +44,7 @@ function fecharModalPermissao() {
     if (modal) modal.style.display = 'none';
 }
 
-function enviarSolicitacaoPermissao(permissao) {
+async function enviarSolicitacaoPermissao(permissao) {
     const msgInput = document.getElementById('msg-solicitacao-permissao');
     const msg = msgInput ? msgInput.value.trim() : '';
 
@@ -53,20 +53,31 @@ function enviarSolicitacaoPermissao(permissao) {
         return;
     }
 
-    const reg = mantenedorValidoAtual ? mantenedorValidoAtual.registro : '1001';
-    const nome = mantenedorValidoAtual ? mantenedorValidoAtual.nome : 'Carlos Silva (Mantenedor)';
+    // O registro (id do usuario logado) vem do auth.js
+    const usuarioLogado = mantenedorValidoAtual || recepcionadorValidoAtual;
+    const solicitanteId = usuarioLogado ? usuarioLogado.registro : null;
+    
+    if (!solicitanteId) {
+        mostrarAlertaModal('Erro', 'Usuário não identificado corretamente.', 'danger');
+        return;
+    }
 
-    solicitacoesAutorizacao.unshift({
-        id: Date.now(),
-        registro: reg,
-        nome: nome,
-        permissao: permissao,
-        mensagem: msg, // texto livre do usuário: é escapado na hora de renderizar (ver tabelas.js)
-        status: 'Pendente',
-        data: new Date().toLocaleDateString('pt-BR')
+    const { error } = await supabaseClient.from('solicitacoes_permissao').insert({
+        id_solicitante: solicitanteId,
+        tipo_permissao: permissao,
+        justificativa: msg,
+        status: 'PENDENTE'
     });
 
-    salvarSolicitacoesStorage();
+    if (error) {
+        console.error('Erro ao salvar solicitação:', error);
+        mostrarAlertaModal('Erro', 'Ocorreu um erro ao enviar a solicitação.', 'danger');
+        return;
+    }
+
+    // Recarrega os dados globais
+    await carregarDadosSupabase();
+
     fecharModalPermissao();
     mostrarAlertaModal('Solicitação Enviada', 'Sua solicitação foi enviada com sucesso ao Administrador!', 'success');
 
@@ -114,25 +125,45 @@ function confirmarAcaoPermissao(idSolicitacao, novoStatus) {
     }
 }
 
-function alterarStatusSolicitacao(idSolicitacao, novoStatus) {
+async function alterarStatusSolicitacao(idSolicitacao, novoStatus) {
     if (perfilAtual !== 'admin') return;
 
     const sol = solicitacoesAutorizacao.find(s => s.id === idSolicitacao);
     if (!sol) return;
 
-    sol.status = novoStatus;
+    // Converte status do front para o enum do banco
+    const statusBanco = novoStatus === 'Aprovado' ? 'APROVADA' : 'REJEITADA'; // Revogado também fica como rejeitada para fechar a sol.
+
+    const { error: errorUpdate } = await supabaseClient
+        .from('solicitacoes_permissao')
+        .update({ status: statusBanco, id_admin_resolucao: perfilAtual === 'admin' ? (mantenedorValidoAtual ? mantenedorValidoAtual.registro : null) : null, data_resolucao: new Date().toISOString() })
+        .eq('id', idSolicitacao);
+    
+    if (errorUpdate) {
+        console.error('Erro ao atualizar solicitação:', errorUpdate);
+        return;
+    }
+
     if (novoStatus === 'Aprovado') {
-        permissoesEspeciais[sol.registro] = true;
-        mostrarAlertaModal('Permissão Concedida', `A permissão de "${sol.permissao}" foi APROVADA para ${sol.nome}.`, 'success');
+        const { error: errorInsert } = await supabaseClient.from('permissoes_especiais').insert({
+            id_usuario: sol.solicitanteId,
+            permissao: sol.permissao
+        });
+        if (!errorInsert) {
+            mostrarAlertaModal('Permissão Concedida', `A permissão de "${sol.permissao}" foi APROVADA para ${sol.nome}.`, 'success');
+        }
     } else if (novoStatus === 'Revogado') {
-        permissoesEspeciais[sol.registro] = false;
+        // Exclui da tabela permissões especiais
+        await supabaseClient.from('permissoes_especiais').delete().eq('id_usuario', sol.solicitanteId);
         mostrarAlertaModal('Permissão Revogada', `A permissão do usuário ${sol.nome} foi cancelada com sucesso.`, 'danger');
     } else {
-        permissoesEspeciais[sol.registro] = false;
         mostrarAlertaModal('Solicitação Recusada', `A solicitação de ${sol.nome} foi recusada.`, 'info');
     }
 
-    salvarSolicitacoesStorage();
-    salvarPermissoesStorage();
-    renderizarTabelaSolicitacoes();
+    // Recarrega todos os dados
+    await carregarDadosSupabase();
+    
+    if (document.getElementById('tabela-solicitacoes-body')) {
+        renderizarTabelaSolicitacoes();
+    }
 }

@@ -12,31 +12,18 @@ const views = {
         <div class="login-card">
             <h2 style="margin-bottom: 4px; color: var(--text-light); font-size: 22px; font-weight: 700;">Silicon Core V2</h2>
             <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 20px;">Autenticação de Acesso ao Sistema</p>
-            <div class="login-test-info">
-                <strong>Credenciais de Teste:</strong><br>
-                <strong>Senha única:</strong> <u style="color:var(--text-light); font-weight:bold;">123</u><br>
-                <strong>Perfil ADM:</strong> Usuário <code>adm</code><br>
-                <strong>Perfil Mantenedor:</strong> Matrícula <code>1001</code>
-            </div>
             <div class="login-field">
-                <label>Perfil de Acesso</label>
-                <select id="login-perfil" class="modern-input" style="padding-left: 12px;" onchange="ajustarUsuarioExemplo(this.value)">
-                    <option value="admin">Administrador (Master adm)</option>
-                    <option value="mantenedor">Mantenedor (1001)</option>
-                </select>
-            </div>
-            <div class="login-field">
-                <label>Usuário / Matrícula</label>
+                <label>E-mail</label>
                 <div class="modern-input-wrapper">
                     <span class="input-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
-                    <input type="text" id="login-usuario" class="modern-input" value="adm">
+                    <input type="email" id="login-usuario" class="modern-input" placeholder="Digite seu e-mail">
                 </div>
             </div>
             <div class="login-field">
                 <label>Senha de Acesso</label>
                 <div class="modern-input-wrapper">
                     <span class="input-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
-                    <input type="password" id="login-senha" class="modern-input" value="123" placeholder="Digite 123">
+                    <input type="password" id="login-senha" class="modern-input" placeholder="Digite sua senha">
                 </div>
             </div>
             <p id="login-erro-msg" style="color: var(--status-red); font-size: 12px; display: none; margin-bottom: 12px; text-align: left; font-weight: 500;"></p>
