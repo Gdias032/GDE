@@ -1,12 +1,23 @@
 /**
  * auth.js
  * ---------------------------------------------------------------------------
- * Login (via Supabase Auth), logout e liberação de menus por perfil.
- * O perfil do usuário é obtido da tabela `usuarios` após autenticação.
+ * Gerenciamento de Autenticação e Sessão
+ * 
+ * Responsável por realizar o login, validar as credenciais junto ao Supabase,
+ * resgatar os perfis (Mantenedor, Recepcionista, Admin), construir a sessão
+ * global (usuarioLogadoSessao) e aplicar as restrições visuais do menu.
  * ---------------------------------------------------------------------------
  */
 
-async function efetuarLoginComValidacao() {
+// ============================================================================
+// FUNÇÕES DE AUTENTICAÇÃO
+// ============================================================================
+
+/** 
+ * Realiza o login utilizando o email (matrícula formatada) e senha.
+ * @param {Event} event - Evento de submit do formulário
+ */
+async function realizarLogin(event) {
     const email = document.getElementById('login-usuario').value.trim();
     const senha = document.getElementById('login-senha').value.trim();
     const msgErro = document.getElementById('login-erro-msg');
@@ -47,18 +58,35 @@ async function efetuarLoginComValidacao() {
 
     const perfilDB = userData.perfil_acesso.toLowerCase();
 
+    // ------------------------------------------------------------------------
+    // CONSTRUÇÃO DA SESSÃO GLOBAL
+    // ------------------------------------------------------------------------
+    const dadosSessao = { 
+        nome: userData.nome_completo, 
+        registro: userData.id, 
+        matricula: userData.matricula, 
+        cargo: userData.cargo, 
+        perfil: perfilDB 
+    };
+    
+    // Armazena a sessão permanente (usada em Perfil e Validações)
+    usuarioLogadoSessao = dadosSessao;
+
+    // Variáveis legadas de máquina (compatibilidade)
     if (perfilDB === 'mantenedor') {
-        mantenedorValidoAtual = { nome: userData.nome_completo, registro: userData.id };
-    } else if (perfilDB === 'recepcionista') {
-        recepcionadorValidoAtual = { nome: userData.nome_completo, registro: userData.id };
-    } else if (perfilDB === 'admin') {
-        mantenedorValidoAtual = { nome: userData.nome_completo, registro: userData.id };
-        recepcionadorValidoAtual = { nome: userData.nome_completo, registro: userData.id };
+        mantenedorValidoAtual = dadosSessao;
+    } else if (perfilDB === 'recepcionista' || perfilDB === 'admin') {
+        recepcionadorValidoAtual = dadosSessao;
     }
 
     await fazerLogin(perfilDB, userData.nome_completo);
 }
 
+// ============================================================================
+// GERENCIAMENTO DE SESSÃO
+// ============================================================================
+
+/** Confirmação e execução do Logout */
 async function confirmarLogout() {
     mostrarConfirmacaoModal({
         titulo: "Sair do Sistema",
@@ -72,12 +100,22 @@ async function confirmarLogout() {
     });
 }
 
-/** Aplica o perfil logado: mostra/esconde itens de menu e navega para a planta. */
+/** 
+ * Aplica o perfil logado na interface: 
+ * - Mostra/esconde itens de menu específicos
+ * - Baixa os dados globais do Supabase
+ * - Navega para a planta
+ */
 async function fazerLogin(perfil, nomeUsuario = 'Usuário') {
     perfilAtual = perfil;
+    
+    // Libera a exibição das barras superior e lateral
     document.querySelector('.sidebar').style.display = 'flex';
     document.querySelector('.top-navbar').style.display = 'flex';
 
+    // ------------------------------------------------------------------------
+    // CONTROLE DE ACESSO VISUAL (MENUS)
+    // ------------------------------------------------------------------------
     if (perfilAtual === 'mantenedor' || perfilAtual === 'recepcionista') {
         document.querySelectorAll('.sidebar-menu li, .top-menu a').forEach(el => {
             const texto = el.innerText.toLowerCase();
@@ -98,6 +136,9 @@ async function fazerLogin(perfil, nomeUsuario = 'Usuário') {
     
     // ⚠️ CRÍTICO: Aguarda baixar os dados reais do Supabase (Máquinas e Solicitações)
     await carregarDadosSupabase();
+    
+    // Inicia o listener de Realtime para atualizar a tela quando outros modificarem os dados
+    inicializarRealtime();
     
     navigateTo('planta');
 }

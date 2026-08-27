@@ -1,11 +1,19 @@
 /**
  * permissoes.js
  * ---------------------------------------------------------------------------
- * Fluxo de solicitação de permissão especial ("Efetuar Recepção") e
- * aprovação/recusa/revogação pelo Administrador.
+ * Fluxo de Solicitações e Permissões Especiais
+ * 
+ * Gerencia a solicitação de permissão "Efetuar Recepção" pelos mantenedores
+ * ou recepcionistas, e a aprovação, recusa ou revogação pelo Administrador.
+ * As permissões concedidas são salvas na tabela `permissoes_especiais`.
  * ---------------------------------------------------------------------------
  */
 
+// ============================================================================
+// SOLICITAÇÃO DE PERMISSÃO (MANTENEDOR / RECEPCIONISTA)
+// ============================================================================
+
+/** Abre o modal de bloqueio para usuários sem permissão e permite solicitar. */
 function abrirModalSemPermissao(permissaoRequerida = 'Efetuar Recepção') {
     let modal = document.getElementById('modal-permissao');
     if (!modal) {
@@ -53,8 +61,8 @@ async function enviarSolicitacaoPermissao(permissao) {
         return;
     }
 
-    // O registro (id do usuario logado) vem do auth.js
-    const usuarioLogado = mantenedorValidoAtual || recepcionadorValidoAtual;
+    // O registro (id do usuario logado) vem da sessão
+    const usuarioLogado = usuarioLogadoSessao;
     const solicitanteId = usuarioLogado ? usuarioLogado.registro : null;
     
     if (!solicitanteId) {
@@ -86,17 +94,25 @@ async function enviarSolicitacaoPermissao(permissao) {
     }
 }
 
+// ============================================================================
+// VERIFICAÇÃO DE PERMISSÃO NO SISTEMA
+// ============================================================================
+
 /** Verifica se o responsável atual pela recepção tem permissão para efetuá-la. */
 function verificarPermissaoEfetuarRecepcao() {
-    if (perfilAtual === 'admin') return true;
-    const reg = recepcionadorValidoAtual ? recepcionadorValidoAtual.registro : (mantenedorValidoAtual ? mantenedorValidoAtual.registro : '1001');
-    return permissoesEspeciais[reg] === true;
+    if (perfilAtual === 'admin' || perfilAtual === 'recepcionista') return true;
+    const usuarioLogado = usuarioLogadoSessao;
+    const matricula = usuarioLogado ? usuarioLogado.matricula : '1001';
+    return permissoesEspeciais[matricula] === true;
 }
+
+// ============================================================================
+// GESTÃO DE SOLICITAÇÕES (ADMINISTRADOR)
+// ============================================================================
 
 /**
  * Ação do Administrador sobre uma solicitação (Aprovar / Recusar / Revogar).
- * Reforço de segurança: só o Admin pode chamar isso, mesmo que a função
- * venha a ser invocada por outro caminho que não os botões da tela.
+ * Somente usuários com perfil 'admin' podem executar isso.
  */
 function confirmarAcaoPermissao(idSolicitacao, novoStatus) {
     if (perfilAtual !== 'admin') return;
@@ -134,9 +150,11 @@ async function alterarStatusSolicitacao(idSolicitacao, novoStatus) {
     // Converte status do front para o enum do banco
     const statusBanco = novoStatus === 'Aprovado' ? 'APROVADA' : 'REJEITADA'; // Revogado também fica como rejeitada para fechar a sol.
 
+    const idAdmin = (perfilAtual === 'admin' && recepcionadorValidoAtual) ? recepcionadorValidoAtual.registro : null;
+
     const { error: errorUpdate } = await supabaseClient
         .from('solicitacoes_permissao')
-        .update({ status: statusBanco, id_admin_resolucao: perfilAtual === 'admin' ? (mantenedorValidoAtual ? mantenedorValidoAtual.registro : null) : null, data_resolucao: new Date().toISOString() })
+        .update({ status: statusBanco, id_admin_resolucao: idAdmin, data_resolucao: new Date().toISOString() })
         .eq('id', idSolicitacao);
     
     if (errorUpdate) {

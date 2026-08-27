@@ -6,6 +6,14 @@
  * ---------------------------------------------------------------------------
  */
 
+// ============================================================================
+// CONFIGURAÇÃO DA TELA DE ATUAÇÃO / RECEPÇÃO
+// ============================================================================
+
+/** 
+ * Prepara a tela de recepção conforme o status da máquina e perfil logado. 
+ * Libera botões, carrega inputs e bloqueia edição se necessário.
+ */
 function configurarTelaRecepcao() {
     const maq = todasAsMaquinas.find(m => m.id === maquinaAtualId);
     if (!maq) return;
@@ -29,6 +37,7 @@ function configurarTelaRecepcao() {
     const displayRecepcionador = document.getElementById('nome-recepcionador-display');
     const inputRegistroRecepcao = document.getElementById('input-registro-recepcionador');
 
+    // Reinicia a variável de validação local a cada vez que abre a máquina
     recepcionadorValidoAtual = null;
 
     if (mantenedorValidoAtual && maq.andamento === 'Não Iniciado') {
@@ -70,15 +79,14 @@ function configurarTelaRecepcao() {
             // matrícula NÃO pode ser digitado livremente. Antes, qualquer
             // usuário logado podia digitar o registro de outra pessoa com
             // permissão (ex: '2001') e o sistema gravava a recepção como
-            // se aquela pessoa a tivesse validado — sem que ela estivesse
-            // de fato presente/logada. Agora a matrícula usada é sempre a
-            // de quem está autenticado na sessão atual (mantenedorValidoAtual).
-            const registroProprio = mantenedorValidoAtual ? mantenedorValidoAtual.registro : '';
+            // de quem está autenticado na sessão atual.
+            const usuarioLogado = usuarioLogadoSessao;
+            const matriculaPropria = usuarioLogado ? usuarioLogado.matricula : '';
             if (inputRegistroRecepcao) {
-                inputRegistroRecepcao.value = registroProprio;
+                inputRegistroRecepcao.value = matriculaPropria;
                 inputRegistroRecepcao.disabled = true;
             }
-            buscarRecepcionadorPorRegistro(registroProprio);
+            buscarRecepcionadorPorRegistro(matriculaPropria);
         }
 
     } else {
@@ -99,6 +107,11 @@ function configurarTelaRecepcao() {
     }
 }
 
+// ============================================================================
+// FLUXO DO MANTENEDOR: INICIAR E PARAR SERVIÇO
+// ============================================================================
+
+/** Registra o Início da manutenção na máquina */
 async function iniciarServico() {
     if (!mantenedorValidoAtual) {
         mostrarAlertaModal('Validação Requerida', 'Atenção: Apenas perfis de mantenedor com matrícula validada podem dar Start!', 'warning');
@@ -122,6 +135,7 @@ async function iniciarServico() {
     }
 }
 
+/** Confirmação para parar serviço (antes de alterar no banco) */
 function confirmarPararServico() {
     mostrarConfirmacaoModal({
         titulo: "Finalizar Atuação Técnica",
@@ -132,6 +146,7 @@ function confirmarPararServico() {
     });
 }
 
+/** Registra a conclusão técnica da manutenção (Status: Aguardando Recepção) */
 async function pararServico() {
     const maq = todasAsMaquinas.find(m => m.id === maquinaAtualId);
     if (!maq) return;
@@ -149,6 +164,10 @@ async function pararServico() {
     }
 }
 
+// ============================================================================
+// FLUXO DE RECEPÇÃO: SALVAR OU SOLICITAR PERMISSÃO
+// ============================================================================
+
 /** Verifica permissão antes de tentar salvar; se não tiver, abre o fluxo de solicitação. */
 function tentarSalvarRecepcao() {
     if (!verificarPermissaoEfetuarRecepcao()) {
@@ -158,6 +177,7 @@ function tentarSalvarRecepcao() {
     salvarRecepcao();
 }
 
+/** Avalia os itens do checklist e decide aprovar (Verde) ou rejeitar (Vermelho) */
 async function salvarRecepcao() {
     if (!recepcionadorValidoAtual) {
         mostrarAlertaModal('Identificação Necessária', 'Atenção: sua matrícula precisa estar validada e com permissão de acesso para efetuar a recepção desta máquina!', 'warning');
@@ -193,6 +213,11 @@ async function salvarRecepcao() {
     }
 }
 
+// ============================================================================
+// FLUXO DO ADMIN: REABRIR MÁQUINA
+// ============================================================================
+
+/** Confirmação para desfazer uma recepção rejeitada (somente Admin) */
 function confirmarReabrirRecepcaoRejeitada() {
     mostrarConfirmacaoModal({
         titulo: "Reabrir Recepção Rejeitada",
@@ -203,6 +228,7 @@ function confirmarReabrirRecepcaoRejeitada() {
     });
 }
 
+/** Reverte o status da máquina rejeitada para "Aguardando Recepção" (Roxo) */
 async function reabrirRecepcaoRejeitada() {
     const maq = todasAsMaquinas.find(m => m.id === maquinaAtualId);
     if (!maq) return;

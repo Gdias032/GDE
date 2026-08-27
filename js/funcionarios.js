@@ -1,21 +1,25 @@
 /**
  * funcionarios.js
  * ---------------------------------------------------------------------------
- * Validação de matrícula/registro de mantenedores e recepcionadores,
- * e bloqueio/liberação do checklist conforme permissão do usuário.
+ * Validações de Identidade e Checklists
+ * 
+ * Valida os registros e matrículas digitados nos modais da planta.
+ * Controla a liberação do botão Start (Mantenedor) e do Checklist (Recepção).
  * ---------------------------------------------------------------------------
  */
 
-/** Valida o registro digitado como mantenedor atuante e libera o botão de Start. */
-function buscarMantenedorPorRegistro(registroDigitado) {
+// ============================================================================
+// VALIDAÇÃO DE MANTENEDOR (INICIAR SERVIÇO)
+// ============================================================================
+
+/** Valida o registro do mantenedor atual e libera o botão de Start. */
+function buscarMantenedorPorRegistro(registroLogado) {
     const inputNome = document.getElementById('input-responsavel');
     const btnIniciar = document.getElementById('btn-iniciar-servico');
-    const encontrado = bancoFuncionarios.find(f => f.registro === registroDigitado.trim());
 
-    if (encontrado) {
-        mantenedorValidoAtual = encontrado;
+    if (mantenedorValidoAtual && mantenedorValidoAtual.registro === registroLogado) {
         if (inputNome) {
-            inputNome.value = encontrado.nome;
+            inputNome.value = mantenedorValidoAtual.nome;
             inputNome.style.color = 'var(--text-light)';
         }
 
@@ -26,7 +30,6 @@ function buscarMantenedorPorRegistro(registroDigitado) {
             btnIniciar.style.cursor = 'pointer';
         }
     } else {
-        mantenedorValidoAtual = null;
         if (inputNome) {
             inputNome.value = '';
             inputNome.style.color = 'var(--text-muted)';
@@ -38,6 +41,10 @@ function buscarMantenedorPorRegistro(registroDigitado) {
         }
     }
 }
+
+// ============================================================================
+// GESTÃO DO CHECKLIST TÉCNICO
+// ============================================================================
 
 /**
  * Trava ou libera o checklist de verificação técnica de acordo com a
@@ -58,39 +65,55 @@ function atualizarEstadoChecklistPorPermissao(temPermissao) {
     });
 }
 
+// ============================================================================
+// VALIDAÇÃO DE RECEPCIONISTA (EFETUAR RECEPÇÃO)
+// ============================================================================
+
 /**
- * Valida o registro digitado como recepcionador. O Administrador tem
- * permissão geral automática (mesmo sem registro cadastrado); os demais
- * perfis precisam de um registro autorizado pelo Admin em "Solicitações".
+ * Valida o registro digitado como recepcionador.
+ * Consulta o banco de dados no Supabase e checa permissões especiais.
  */
-function buscarRecepcionadorPorRegistro(registroDigitado) {
+async function buscarRecepcionadorPorRegistro(matriculaDigitada) {
     const msg = document.getElementById('msg-validacao-recepcao');
     const displayNome = document.getElementById('nome-recepcionador-display');
-    const registro = registroDigitado.trim();
-    const encontrado = bancoFuncionarios.find(f => f.registro === registro);
+    const matricula = matriculaDigitada.trim();
 
+    // Administrador tem validação especial (pode digitar de outros)
     if (perfilAtual === 'admin') {
-        if (!encontrado) {
-            recepcionadorValidoAtual = ADMIN_RECEPCIONADOR_PADRAO;
+        const nomeAdmin = usuarioLogadoSessao ? usuarioLogadoSessao.nome : 'Admin';
+        if (!matricula) {
+            recepcionadorValidoAtual = { nome: nomeAdmin, registro: usuarioLogadoSessao ? usuarioLogadoSessao.registro : 'adm' };
             if (displayNome) {
-                displayNome.innerText = 'Master / Admin (Administrador)';
+                displayNome.innerText = `${nomeAdmin} (Administrador)`;
                 displayNome.style.color = 'var(--status-green)';
                 displayNome.style.borderColor = 'var(--status-green)';
             }
             if (msg) {
-                msg.innerText = registro === ''
-                    ? 'Acesso de Administrador: permissão geral concedida automaticamente. Se quiser, digite o registro de um funcionário para atribuir a ele.'
-                    : 'Registro não localizado — a recepção seguirá registrada em seu nome (Administrador).';
-                msg.style.color = registro === '' ? 'var(--status-green)' : 'var(--status-yellow)';
+                msg.innerText = 'Acesso de Administrador: recepção seguirá registrada em seu nome.';
+                msg.style.color = 'var(--status-green)';
             }
             atualizarEstadoChecklistPorPermissao(true);
             return;
         }
 
-        const funcionarioTemPermissao = permissoesEspeciais[encontrado.registro] === true;
-        recepcionadorValidoAtual = encontrado;
+        // Admin pesquisando outro funcionário no banco
+        const { data: usuarioBusca, error } = await supabaseClient.from('usuarios').select('*').eq('matricula', matricula).single();
+        
+        if (error || !usuarioBusca) {
+            recepcionadorValidoAtual = { nome: nomeAdmin, registro: usuarioLogadoSessao ? usuarioLogadoSessao.registro : 'adm' };
+            if (msg) {
+                msg.innerText = `Registro não localizado — a recepção seguirá registrada em seu nome (${nomeAdmin}).`;
+                msg.style.color = 'var(--status-yellow)';
+            }
+            atualizarEstadoChecklistPorPermissao(true);
+            return;
+        }
+
+        const funcionarioTemPermissao = permissoesEspeciais[usuarioBusca.matricula] === true;
+        recepcionadorValidoAtual = { nome: usuarioBusca.nome_completo, registro: usuarioBusca.id };
+        
         if (displayNome) {
-            displayNome.innerText = `${encontrado.nome} (${encontrado.cargo})`;
+            displayNome.innerText = `${usuarioBusca.nome_completo} (${usuarioBusca.cargo})`;
             displayNome.style.color = funcionarioTemPermissao ? 'var(--status-green)' : 'var(--status-yellow)';
             displayNome.style.borderColor = funcionarioTemPermissao ? 'var(--status-green)' : 'var(--status-yellow)';
         }
@@ -104,16 +127,11 @@ function buscarRecepcionadorPorRegistro(registroDigitado) {
         return;
     }
 
-    // Demais perfis (ex.: Mantenedor): só podem recepcionar com a PRÓPRIA
-    // matrícula (a de quem está autenticado na sessão), nunca com o
-    // registro de outra pessoa — mesmo que essa pessoa tenha permissão.
-    //
-    // CORREÇÃO DE SEGURANÇA: esta validação existe mesmo com o campo
-    // travado (disabled) em recepcao.js, como segunda camada de defesa
-    // caso alguém tente forçar a chamada desta função via console/DevTools
-    // com o registro de outro funcionário para "assinar" em nome dele.
-    const registroDoUsuarioLogado = mantenedorValidoAtual ? mantenedorValidoAtual.registro : null;
-    if (registro !== '' && registro !== registroDoUsuarioLogado) {
+    // Demais perfis (Mantenedor, Recepcionista)
+    const usuarioLogado = usuarioLogadoSessao;
+    const matriculaLogada = usuarioLogado ? usuarioLogado.matricula : null;
+
+    if (matricula !== '' && matricula !== matriculaLogada) {
         recepcionadorValidoAtual = null;
         if (displayNome) {
             displayNome.innerText = 'Aguardando validação...';
@@ -128,51 +146,40 @@ function buscarRecepcionadorPorRegistro(registroDigitado) {
         return;
     }
 
-    if (!encontrado) {
+    if (!matricula) {
         recepcionadorValidoAtual = null;
-        if (displayNome) {
-            displayNome.innerText = 'Aguardando validação...';
-            displayNome.style.color = 'var(--text-muted)';
-            displayNome.style.borderColor = 'var(--border-color)';
-        }
-        if (msg) {
-            msg.innerText = registro === '' ? 'Informe o registro para validação.' : 'Registro não localizado no banco de dados.';
-            msg.style.color = 'var(--status-red)';
-        }
+        if (displayNome) { displayNome.innerText = 'Aguardando validação...'; displayNome.style.color = 'var(--text-muted)'; }
+        if (msg) { msg.innerText = 'Informe o registro para validação.'; msg.style.color = 'var(--status-red)'; }
         atualizarEstadoChecklistPorPermissao(false);
         return;
     }
 
-    const temPermissao = permissoesEspeciais[encontrado.registro] === true;
+    const temPermissao = permissoesEspeciais[matriculaLogada] === true;
 
     if (!temPermissao) {
         recepcionadorValidoAtual = null;
         if (displayNome) {
-            displayNome.innerText = `${encontrado.nome} (${encontrado.cargo})`;
+            displayNome.innerText = `${usuarioLogado.nome} (Sem Permissão)`;
             displayNome.style.color = 'var(--status-red)';
             displayNome.style.borderColor = 'var(--status-red)';
         }
         if (msg) {
-            msg.innerText = 'Este usuário não possui permissão para efetuar recepção.';
+            msg.innerText = 'Você não possui permissão para efetuar recepção. Solicite ao Admin.';
             msg.style.color = 'var(--status-red)';
         }
         atualizarEstadoChecklistPorPermissao(false);
-        mostrarAlertaModal(
-            'Acesso Negado',
-            `${encontrado.nome} (matrícula ${encontrado.registro}) não possui permissão para efetuar recepção. Apenas usuários autorizados (ou o Administrador) podem validar esta etapa.`,
-            'danger'
-        );
         return;
     }
 
-    recepcionadorValidoAtual = encontrado;
+    // Sucesso para o usuário padrão
+    recepcionadorValidoAtual = usuarioLogado;
     if (displayNome) {
-        displayNome.innerText = `${encontrado.nome} (${encontrado.cargo})`;
+        displayNome.innerText = `${usuarioLogado.nome} (Autorizado)`;
         displayNome.style.color = 'var(--status-green)';
         displayNome.style.borderColor = 'var(--status-green)';
     }
     if (msg) {
-        msg.innerText = 'Registro validado!';
+        msg.innerText = 'Sua matrícula foi validada para recepção!';
         msg.style.color = 'var(--status-green)';
     }
     atualizarEstadoChecklistPorPermissao(true);

@@ -62,11 +62,11 @@ function renderizarTabelaSolicitacoes() {
         if (perfilAtual === 'admin') {
             if (sol.status === 'Pendente') {
                 acoesHtml = `
-                <button class="btn-acao" style="background: rgba(16, 185, 129, 0.2); border-color: var(--status-green); color: #34d399; padding: 5px 10px; font-size: 11px; margin-right: 5px;" onclick="confirmarAcaoPermissao(${sol.id}, 'Aprovado')">Aprovar</button>
-                <button class="btn-cancelar" style="padding: 5px 10px; font-size: 11px;" onclick="confirmarAcaoPermissao(${sol.id}, 'Recusado')">Recusar</button>`;
+                <button class="btn-acao" style="background: rgba(16, 185, 129, 0.2); border-color: var(--status-green); color: #34d399; padding: 5px 10px; font-size: 11px; margin-right: 5px;" onclick="confirmarAcaoPermissao('${sol.id}', 'Aprovado')">Aprovar</button>
+                <button class="btn-cancelar" style="padding: 5px 10px; font-size: 11px;" onclick="confirmarAcaoPermissao('${sol.id}', 'Recusado')">Recusar</button>`;
             } else if (sol.status === 'Aprovado') {
                 acoesHtml = `
-                <button class="btn-cancelar" style="border-color: var(--status-red); color: var(--status-red); font-size: 11px; padding: 5px 10px;" onclick="confirmarAcaoPermissao(${sol.id}, 'Revogado')">Revogar Permissão</button>`;
+                <button class="btn-cancelar" style="border-color: var(--status-red); color: var(--status-red); font-size: 11px; padding: 5px 10px;" onclick="confirmarAcaoPermissao('${sol.id}', 'Revogado')">Revogar Permissão</button>`;
             }
         }
 

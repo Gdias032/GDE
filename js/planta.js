@@ -1,11 +1,17 @@
 /**
  * planta.js
  * ---------------------------------------------------------------------------
- * Renderização da grade (matriz) de máquinas na tela "Planta Geral",
- * o tooltip flutuante ao passar o mouse, e o painel lateral de
- * "Análises Rápidas" (ranking de mantenedores).
+ * Renderização da Planta e Matriz de Máquinas
+ * 
+ * Responsável por desenhar a matriz de máquinas, gerenciar o hover
+ * flutuante (tooltip) e renderizar o painel lateral de análises rápidas
+ * (TOP 5 Mantenedores).
  * ---------------------------------------------------------------------------
  */
+
+// ============================================================================
+// MATRIZ DE MÁQUINAS E TOOLTIP
+// ============================================================================
 
 function renderizarMatriz() {
     const matriz = document.getElementById('matriz-planta');
@@ -75,7 +81,11 @@ function renderizarMatriz() {
     });
 }
 
-/** Painel lateral com o TOP 5 de mantenedores por quantidade de atuações. */
+// ============================================================================
+// PAINEL DE ANÁLISES RÁPIDAS (RANKING)
+// ============================================================================
+
+/** Painel lateral com o TOP 5 de mantenedores por quantidade de atuações (Verdes e Roxas). */
 function renderizarAnalisesRapidas() {
     const painel = document.getElementById('painel-analise-lateral');
     if (!painel) return;
@@ -83,16 +93,22 @@ function renderizarAnalisesRapidas() {
     const contagem = {};
     todasAsMaquinas.forEach(m => {
         if (m.realizou && m.realizou !== '-' && m.realizou !== '') {
-            contagem[m.realizou] = (contagem[m.realizou] || 0) + 1;
+            if (!contagem[m.realizou]) {
+                contagem[m.realizou] = { verdes: 0, roxas: 0 };
+            }
+            if (m.status === 'green') contagem[m.realizou].verdes++;
+            if (m.status === 'purple') contagem[m.realizou].roxas++;
         }
     });
 
+    // Filtra para remover quem tem 0 verdes e 0 roxas
     const ranking = Object.keys(contagem)
-        .map(nome => ({ nome, total: contagem[nome] }))
-        .sort((a, b) => b.total - a.total)
+        .map(nome => ({ nome, verdes: contagem[nome].verdes, roxas: contagem[nome].roxas }))
+        .filter(item => item.verdes > 0 || item.roxas > 0)
+        .sort((a, b) => b.verdes - a.verdes)
         .slice(0, 5);
 
-    const maxCount = ranking.length > 0 ? ranking[0].total : 0;
+    const maxCount = ranking.length > 0 ? ranking[0].verdes + ranking[0].roxas : 0;
 
     let html = `
         <h3 style="font-size: 14px; margin-bottom: 5px; display: flex; align-items:center; gap:6px; color: var(--text-light);">
@@ -104,18 +120,33 @@ function renderizarAnalisesRapidas() {
     if (ranking.length === 0) {
         html += `<p style="font-size: 11px; color: var(--text-muted); margin-top: 20px;">Nenhum dado registrado até o momento.</p>`;
     } else {
-        const cores = ['var(--status-green)', 'var(--status-yellow)', '#8b5cf6', '#3b82f6', '#f43f5e'];
         ranking.forEach((item, index) => {
-            const cor = cores[index % cores.length];
-            const percentual = maxCount > 0 ? Math.round((item.total / maxCount) * 100) : 0;
+            let cor = '#3b82f6'; // Azul por padrão (intermediários)
+            if (index === 0) {
+                cor = 'var(--status-green)'; // 1º lugar = Verde
+            } else if (index === 1) {
+                cor = 'var(--status-yellow)'; // 2º lugar = Amarelo
+            } else if (index === ranking.length - 1 && ranking.length > 2) {
+                cor = 'var(--status-red)'; // Último lugar = Vermelho (só se houver mais de 2 para ter um último de verdade)
+            } else if (index === ranking.length - 1) {
+                cor = 'var(--status-red)'; // Vermelho para o último
+            }
+
+            const percentualVerde = maxCount > 0 ? Math.round((item.verdes / maxCount) * 100) : 0;
+            const percentualRoxo = maxCount > 0 ? Math.round((item.roxas / maxCount) * 100) : 0;
+            
             html += `
             <div style="background: var(--input-bg-soft); padding: 12px; border-radius: 8px; margin-bottom: 10px; border:1px solid var(--border-color);">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px;">
                     <span style="color: var(--text-main);">${escapeHtml(item.nome)}</span>
-                    <span style="color: ${cor}; font-weight: bold;">${item.total} unid.</span>
+                    <div>
+                        <span style="color: ${cor}; font-weight: bold;">${item.verdes} aprov.</span>
+                        ${item.roxas > 0 ? `<span style="color: #c084fc; font-size: 10px; margin-left: 5px;">(+${item.roxas} roxos)</span>` : ''}
+                    </div>
                 </div>
-                <div style="width: 100%; height: 5px; background: var(--border-color); border-radius: 3px; overflow: hidden;">
-                    <div style="background: ${cor}; width: ${percentual}%; height: 100%; border-radius: 3px; transition: width 0.5s ease;"></div>
+                <div style="width: 100%; height: 5px; background: var(--border-color); border-radius: 3px; overflow: hidden; display: flex;">
+                    <div style="background: ${cor}; width: ${percentualVerde}%; height: 100%; transition: width 0.5s ease;"></div>
+                    ${item.roxas > 0 ? `<div style="background: #8b5cf6; width: ${percentualRoxo}%; height: 100%; transition: width 0.5s ease;"></div>` : ''}
                 </div>
             </div>`;
         });

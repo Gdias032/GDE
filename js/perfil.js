@@ -12,8 +12,8 @@
  */
 
 function chaveFotoAtual() {
-    if (perfilAtual === 'mantenedor' && mantenedorValidoAtual) {
-        return `silicon_foto_${mantenedorValidoAtual.registro}`;
+    if (usuarioLogadoSessao) {
+        return `silicon_foto_${usuarioLogadoSessao.registro}`;
     }
     return 'silicon_foto_adm';
 }
@@ -31,7 +31,13 @@ function renderizarAvatarUsuario() {
         userCircle.innerText = '';
     } else {
         userCircle.style.backgroundImage = '';
-        userCircle.innerText = perfilAtual === 'mantenedor' ? 'MN' : 'SA';
+        if (usuarioLogadoSessao && usuarioLogadoSessao.perfil === 'admin') {
+            userCircle.innerText = 'SA';
+        } else if (usuarioLogadoSessao && usuarioLogadoSessao.perfil === 'recepcionista') {
+            userCircle.innerText = 'RC';
+        } else {
+            userCircle.innerText = 'MN';
+        }
     }
 }
 
@@ -45,13 +51,14 @@ function abrirModalPerfil() {
         document.body.appendChild(modal);
     }
 
-    const nome = perfilAtual === 'mantenedor' && mantenedorValidoAtual ? mantenedorValidoAtual.nome : 'Master / Admin';
-    const cargo = perfilAtual === 'mantenedor' && mantenedorValidoAtual ? mantenedorValidoAtual.cargo : 'Administrador do Sistema';
-    const registro = perfilAtual === 'mantenedor' && mantenedorValidoAtual ? mantenedorValidoAtual.registro : '—';
-    const nivelAcesso = perfilAtual === 'admin' ? 'Administrador' : 'Mantenedor';
+    const usuarioLogado = usuarioLogadoSessao;
+    const nome = usuarioLogado ? usuarioLogado.nome : 'Master / Admin';
+    const cargo = usuarioLogado && usuarioLogado.cargo ? usuarioLogado.cargo : (perfilAtual === 'admin' ? 'Administrador do Sistema' : 'Funcionário');
+    const matricula = usuarioLogado && usuarioLogado.matricula ? usuarioLogado.matricula : '—';
+    const nivelAcesso = perfilAtual === 'admin' ? 'Administrador' : (perfilAtual === 'recepcionista' ? 'Recepcionista' : 'Mantenedor');
     let foto = null;
     try { foto = localStorage.getItem(chaveFotoAtual()); } catch (e) { /* modo privado etc. */ }
-    const iniciais = perfilAtual === 'mantenedor' ? 'MN' : 'SA';
+    const iniciais = perfilAtual === 'mantenedor' ? 'MN' : (perfilAtual === 'recepcionista' ? 'RC' : 'SA');
 
     modal.innerHTML = `
     <div class="modal-card" style="text-align:center; max-width: 360px;">
@@ -70,7 +77,7 @@ function abrirModalPerfil() {
         <h3 style="margin-top: 16px; color: var(--text-light); font-size: 17px;">${escapeHtml(nome)}</h3>
         <p style="color: var(--text-muted); font-size: 13px; margin-top: 2px;">${escapeHtml(cargo)}</p>
         <div class="perfil-info-box">
-            <div><span>Matrícula</span><strong>${escapeHtml(registro)}</strong></div>
+            <div><span>Matrícula</span><strong>${escapeHtml(matricula)}</strong></div>
             <div><span>Nível de Acesso</span><strong>${escapeHtml(nivelAcesso)}</strong></div>
         </div>
         <p style="font-size: 11px; color: var(--text-muted); margin-top: 14px; line-height: 1.4;">Apenas a foto de perfil pode ser alterada por aqui. Para outras alterações de cadastro, contate o Administrador.</p>

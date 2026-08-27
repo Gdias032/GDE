@@ -27,7 +27,7 @@ const views = {
                 </div>
             </div>
             <p id="login-erro-msg" style="color: var(--status-red); font-size: 12px; display: none; margin-bottom: 12px; text-align: left; font-weight: 500;"></p>
-            <button class="btn-modern btn-purple" style="width: 100%; justify-content: center; padding: 12px; font-size: 14px; margin-top: 5px;" onclick="efetuarLoginComValidacao()">
+            <button class="btn-modern btn-purple" style="width: 100%; justify-content: center; padding: 12px; font-size: 14px; margin-top: 5px;" onclick="realizarLogin()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg> Acessar Sistema
             </button>
         </div>
@@ -82,7 +82,7 @@ const views = {
                 </div>
             </div>
             <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                <button id="btn-iniciar-servico" class="btn-modern" style="background-color: var(--status-yellow); color: #000; display: none;" onclick="iniciarServico()" disabled>
+                <button id="btn-iniciar-servico" class="btn-modern" style="background-color: var(--status-yellow); color: #000; display: none;" onclick="iniciarServico()">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Start / Iniciar Serviço
                 </button>
                 <button id="btn-parar-servico" class="btn-modern btn-purple" style="display: none;" onclick="confirmarPararServico()">

@@ -11,8 +11,9 @@
 // Estado de navegação / sessão atual
 let maquinaAtualId = null;
 let perfilAtual = null;               // 'admin' | 'mantenedor' | null
-let mantenedorValidoAtual = null;     // funcionário validado como mantenedor atuante
-let recepcionadorValidoAtual = null;  // funcionário validado como recepcionador
+let mantenedorValidoAtual = null;     // funcionário validado como mantenedor atuante na máquina
+let recepcionadorValidoAtual = null;  // funcionário validado como recepcionador na máquina
+let usuarioLogadoSessao = null;       // Dados REAIS da sessão do usuário logado (nome, matricula, cargo, etc)
 let meuGraficoBI = null;              // instância do Chart.js da tela de análise
 
 // Dados do banco
@@ -147,4 +148,38 @@ function atualizarNotificacoesPendentes() {
     atualizarBadgeElemento('notif-badge', qtdPendentes);
     atualizarBadgeElemento('sidebar-solicitacoes-badge', qtdPendentes);
     atualizarBadgeElemento('topnav-solicitacoes-badge', qtdPendentes);
+}
+
+/** Inicializa os listeners do Supabase Realtime para que a tela atualize sozinha */
+let realtimeAtivo = false;
+function inicializarRealtime() {
+    if (realtimeAtivo) return; // Evita criar multiplos canais
+    
+    supabaseClient
+        .channel('schema-db-changes')
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public' },
+            async (payload) => {
+                console.log('Mudança no banco detectada em tempo real!', payload);
+                // Busca os dados novos do banco
+                await carregarDadosSupabase();
+                
+                // Re-renderiza a tela atual para refletir as mudanças imediatamente
+                if (typeof renderizarMatriz === 'function' && document.getElementById('matriz-planta')) {
+                    renderizarMatriz();
+                    renderizarAnalisesRapidas();
+                }
+                if (typeof renderizarTabelaSolicitacoes === 'function' && document.getElementById('tabela-solicitacoes-body')) {
+                    renderizarTabelaSolicitacoes();
+                }
+                // Se a tela de recepção (máquina aberta) estiver visível e a máquina foi alterada, atualiza a tela
+                if (typeof configurarTelaRecepcao === 'function' && maquinaAtualId && document.getElementById('view-recepcao').style.display === 'block') {
+                    configurarTelaRecepcao();
+                }
+            }
+        )
+        .subscribe();
+    
+    realtimeAtivo = true;
 }
