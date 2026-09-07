@@ -31,8 +31,8 @@ async function carregarDadosSupabase() {
         .from('maquinas_planta')
         .select(`
             *,
-            mantenedor:id_mantenedor_atual(nome_completo),
-            recepcionista:id_recepcionista_atual(nome_completo)
+            mantenedor:id_mantenedor_atual(nome_completo, avatar_base64),
+            recepcionista:id_recepcionista_atual(nome_completo, avatar_base64)
         `)
         .order('linha', { ascending: true })
         .order('coluna', { ascending: true });
@@ -46,8 +46,10 @@ async function carregarDadosSupabase() {
             andamento: m.andamento,
             realizou: m.mantenedor ? m.mantenedor.nome_completo : '-',
             realizouId: m.id_mantenedor_atual, // Guardado para usar no update depois
+            mantenedorAvatar: m.mantenedor ? m.mantenedor.avatar_base64 : null,
             recepcionou: m.recepcionista ? m.recepcionista.nome_completo : '',
             recepcionouId: m.id_recepcionista_atual,
+            recepcionistaAvatar: m.recepcionista ? m.recepcionista.avatar_base64 : null,
             dataInicio: m.data_inicio ? new Date(m.data_inicio).toLocaleDateString('pt-BR') : '',
             dataFim: m.data_fim ? new Date(m.data_fim).toLocaleDateString('pt-BR') : '-',
             obs: m.observacoes || ''

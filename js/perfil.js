@@ -20,23 +20,38 @@ function chaveFotoAtual() {
 
 function renderizarAvatarUsuario() {
     const userCircle = document.querySelector('.user-circle');
-    if (!userCircle) return;
-    let foto = null;
-    try { foto = localStorage.getItem(chaveFotoAtual()); } catch (e) { /* modo privado etc. */ }
+    const sidebarAvatar = document.querySelector('.sidebar .avatar');
+    let foto = usuarioLogadoSessao ? usuarioLogadoSessao.avatar : null;
 
     if (foto) {
-        userCircle.style.backgroundImage = `url(${foto})`;
-        userCircle.style.backgroundSize = 'cover';
-        userCircle.style.backgroundPosition = 'center';
-        userCircle.innerText = '';
+        if (userCircle) {
+            userCircle.style.backgroundImage = `url(${foto})`;
+            userCircle.style.backgroundSize = 'cover';
+            userCircle.style.backgroundPosition = 'center';
+            userCircle.innerText = '';
+        }
+        if (sidebarAvatar) {
+            sidebarAvatar.style.backgroundImage = `url(${foto})`;
+            sidebarAvatar.style.backgroundSize = 'cover';
+            sidebarAvatar.style.backgroundPosition = 'center';
+            sidebarAvatar.innerText = '';
+        }
     } else {
-        userCircle.style.backgroundImage = '';
-        if (usuarioLogadoSessao && usuarioLogadoSessao.perfil === 'admin') {
-            userCircle.innerText = 'SA';
-        } else if (usuarioLogadoSessao && usuarioLogadoSessao.perfil === 'recepcionista') {
-            userCircle.innerText = 'RC';
-        } else {
-            userCircle.innerText = 'MN';
+        const iniciais = (usuarioLogadoSessao && usuarioLogadoSessao.perfil === 'admin') ? 'SA' : 
+                         (usuarioLogadoSessao && usuarioLogadoSessao.perfil === 'recepcionista' ? 'RC' : 'MN');
+                         
+        if (userCircle) {
+            userCircle.style.backgroundImage = '';
+            userCircle.innerText = iniciais;
+        }
+        if (sidebarAvatar) {
+            sidebarAvatar.style.backgroundImage = '';
+            sidebarAvatar.innerText = iniciais;
+            sidebarAvatar.style.display = 'flex';
+            sidebarAvatar.style.alignItems = 'center';
+            sidebarAvatar.style.justifyContent = 'center';
+            sidebarAvatar.style.color = '#fff';
+            sidebarAvatar.style.fontWeight = '700';
         }
     }
 }
@@ -56,8 +71,7 @@ function abrirModalPerfil() {
     const cargo = usuarioLogado && usuarioLogado.cargo ? usuarioLogado.cargo : (perfilAtual === 'admin' ? 'Administrador do Sistema' : 'Funcionário');
     const matricula = usuarioLogado && usuarioLogado.matricula ? usuarioLogado.matricula : '—';
     const nivelAcesso = perfilAtual === 'admin' ? 'Administrador' : (perfilAtual === 'recepcionista' ? 'Recepcionista' : 'Mantenedor');
-    let foto = null;
-    try { foto = localStorage.getItem(chaveFotoAtual()); } catch (e) { /* modo privado etc. */ }
+    let foto = usuarioLogadoSessao ? usuarioLogadoSessao.avatar : null;
     const iniciais = perfilAtual === 'mantenedor' ? 'MN' : (perfilAtual === 'recepcionista' ? 'RC' : 'SA');
 
     modal.innerHTML = `
@@ -90,7 +104,7 @@ function fecharModalPerfil() {
     if (modal) modal.style.display = 'none';
 }
 
-function trocarFotoPerfil(input) {
+async function trocarFotoPerfil(input) {
     const arquivo = input.files && input.files[0];
     if (!arquivo) return;
 
@@ -104,13 +118,26 @@ function trocarFotoPerfil(input) {
     }
 
     const leitor = new FileReader();
-    leitor.onload = function (e) {
+    leitor.onload = async function (e) {
         const dataUrl = e.target.result;
-        const salvo = salvarStorageSeguroBruto(chaveFotoAtual(), dataUrl);
-        if (!salvo) {
-            mostrarAlertaModal('Não foi possível salvar', 'O navegador recusou salvar a imagem (armazenamento cheio ou modo privado). Tente uma imagem menor.', 'warning');
+        
+        if (!usuarioLogadoSessao || !usuarioLogadoSessao.registro) {
+            mostrarAlertaModal('Erro', 'Usuário não logado.', 'warning');
             return;
         }
+
+        const { error } = await supabaseClient
+            .from('usuarios')
+            .update({ avatar_base64: dataUrl })
+            .eq('id', usuarioLogadoSessao.registro);
+
+        if (error) {
+            console.error('Erro ao salvar foto', error);
+            mostrarAlertaModal('Não foi possível salvar', 'Erro ao salvar a imagem no banco de dados.', 'danger');
+            return;
+        }
+
+        usuarioLogadoSessao.avatar = dataUrl;
         renderizarAvatarUsuario();
 
         const preview = document.getElementById('perfil-avatar-preview');
@@ -123,13 +150,4 @@ function trocarFotoPerfil(input) {
     leitor.readAsDataURL(arquivo);
 }
 
-/** Salva um valor "cru" (não-JSON, ex: data URL de imagem) com tratamento de erro. */
-function salvarStorageSeguroBruto(chave, valor) {
-    try {
-        localStorage.setItem(chave, valor);
-        return true;
-    } catch (erro) {
-        console.warn(`Falha ao salvar "${chave}" no localStorage.`, erro);
-        return false;
-    }
-}
+// Removido salvarStorageSeguroBruto e localStorage.

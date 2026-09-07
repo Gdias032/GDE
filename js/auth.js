@@ -66,7 +66,8 @@ async function realizarLogin(event) {
         registro: userData.id, 
         matricula: userData.matricula, 
         cargo: userData.cargo, 
-        perfil: perfilDB 
+        perfil: perfilDB,
+        avatar: userData.avatar_base64
     };
     
     // Armazena a sessão permanente (usada em Perfil e Validações)

@@ -137,6 +137,14 @@ async function iniciarServico() {
 
 /** Confirmação para parar serviço (antes de alterar no banco) */
 function confirmarPararServico() {
+    const maq = todasAsMaquinas.find(m => m.id === maquinaAtualId);
+    if (!maq) return;
+
+    if (maq.realizouId && usuarioLogadoSessao && maq.realizouId !== usuarioLogadoSessao.registro) {
+        mostrarAlertaModal('Ação não permitida', 'Esse trabalho só pode ser finalizado pela pessoa que o iniciou.', 'warning');
+        return;
+    }
+
     mostrarConfirmacaoModal({
         titulo: "Finalizar Atuação Técnica",
         mensagem: `Tem certeza que deseja finalizar a manutenção na máquina ${maquinaAtualId}? Ela passará para o status "Aguardando Recepção".`,
