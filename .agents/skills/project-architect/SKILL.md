@@ -71,6 +71,50 @@ Never rely exclusively on the project context when modifying code.
 
 ---
 
+## Cartographer Integration
+
+Cartographer provides a machine-readable code graph for the current repository through MCP.
+
+Use Cartographer when the task requires understanding or validating:
+
+* relationships between files or modules
+* imports and dependencies
+* database tables and references
+* service-to-database relationships
+* architectural impact of a change
+* affected files or components
+* code structure that is not sufficiently described by `.project-context/`
+
+Before making a substantial structural change:
+
+1. Consult `.project-context/`.
+2. Use the Cartographer MCP tools when structural information is needed.
+3. Inspect the relevant source files directly.
+4. Treat the actual source code as the authoritative source of truth.
+5. Use Cartographer as a structural analysis and navigation tool, not as a replacement for source inspection.
+
+When useful, prefer Cartographer's bounded context and impact-oriented commands rather than loading the entire repository into context.
+
+Useful Cartographer operations include:
+
+* `brief` — obtain bounded context around a path, symbol, package, database object, or other graph object.
+* `impact` — determine what may be affected by a file or graph node.
+* `slice` — inspect a focused portion of the graph.
+* `context` — combine structural slice and impact information.
+* `preflight` — obtain compact context before editing.
+* `verify` — check whether graph artifacts remain compatible and fresh.
+
+If Cartographer and `.project-context/` disagree:
+
+1. Inspect the actual source code.
+2. Treat the source code as authoritative.
+3. Update the stale architectural context when appropriate.
+
+Do not assume that the Cartographer graph is current if the repository has changed since the last indexing operation.
+
+If structural changes were made, ensure the Cartographer artifacts are refreshed before relying on them for subsequent architectural analysis.
+
+
 ## Architecture
 
 Maintain:
@@ -234,10 +278,13 @@ Update the project context when appropriate.
 For substantial tasks:
 
 1. Load project context.
-2. Understand the architecture.
-3. Identify relevant modules.
-4. Inspect relevant source files.
-5. Plan the change.
-6. Implement the change.
-7. Validate the change.
-8. Update project context if the architecture changed.
+2. Check whether the Cartographer graph is available.
+3. Use Cartographer to obtain relevant structural context when needed.
+4. Identify relevant modules and affected components.
+5. Inspect the actual source files.
+6. Check whether the existing project context or Cartographer graph is outdated.
+7. Plan the change.
+8. Implement the change.
+9. Validate the change.
+10. Refresh or update Cartographer artifacts when structural changes occurred.
+11. Update `.project-context/` if the architecture, modules, dependencies, data flows, decisions, or known issues changed.
