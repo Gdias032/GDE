@@ -1,5 +1,5 @@
-const SUPABASE_URL = 'https://ygqmepbjyetugpwqrnse.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlncW1lcGJqeWV0dWdwd3FybnNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc2MjUwMDgsImV4cCI6MjEwMzIwMTAwOH0.AxzQiG4DcoVl2XrAJQWFwEd22Plnv7uS5Z9HUn61bVc';
+const SUPABASE_URL = 'https://vbsjqgkgohlkmrdrtvou.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_XESn26mvZWr8Ax-7dyVzNg_uTEgZpMW';
 
 // Inicializa o cliente do Supabase
 // Como esse script carrega logo após o CDN do supabase, a variável global supabase estará disponível

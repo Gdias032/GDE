@@ -32,7 +32,7 @@ async function carregarDadosSupabase() {
         .select(`
             *,
             mantenedor:id_mantenedor_atual(nome_completo, avatar_base64),
-            recepcionista:id_recepcionista_atual(nome_completo, avatar_base64)
+            recepcionista:id_recepcionista_atual(nome_completo, avatar_base64, matricula)
         `)
         .order('linha', { ascending: true })
         .order('coluna', { ascending: true });
@@ -49,6 +49,7 @@ async function carregarDadosSupabase() {
             mantenedorAvatar: m.mantenedor ? m.mantenedor.avatar_base64 : null,
             recepcionou: m.recepcionista ? m.recepcionista.nome_completo : '',
             recepcionouId: m.id_recepcionista_atual,
+            recepcionouMatricula: m.recepcionista ? m.recepcionista.matricula : '',
             recepcionistaAvatar: m.recepcionista ? m.recepcionista.avatar_base64 : null,
             dataInicio: m.data_inicio ? new Date(m.data_inicio).toLocaleDateString('pt-BR') : '',
             dataFim: m.data_fim ? new Date(m.data_fim).toLocaleDateString('pt-BR') : '-',

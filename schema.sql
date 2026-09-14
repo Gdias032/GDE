@@ -24,6 +24,7 @@ CREATE TABLE usuarios (
     nome_completo VARCHAR(255) NOT NULL,
     cargo VARCHAR(100) NOT NULL,
     perfil_acesso perfil_acesso_enum NOT NULL,
+    avatar_base64 TEXT,
     ativo BOOLEAN DEFAULT true,
     criado_em TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

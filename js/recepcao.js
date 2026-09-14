@@ -97,7 +97,10 @@ function configurarTelaRecepcao() {
             displayRecepcionador.style.color = maq.status === 'green' ? 'var(--status-green)' : 'var(--status-red)';
         }
 
-        if (inputRegistroRecepcao) inputRegistroRecepcao.disabled = true;
+        if (inputRegistroRecepcao) {
+            inputRegistroRecepcao.value = maq.recepcionouMatricula || '';
+            inputRegistroRecepcao.disabled = true;
+        }
         document.getElementById('input-obs').disabled = true;
         checkboxes.forEach(chk => { chk.checked = (maq.status === 'green'); chk.disabled = true; });
 

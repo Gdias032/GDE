@@ -61,5 +61,7 @@ function navigateTo(viewName, parametro = null) {
         renderizarTabelaSolicitacoes();
     } else if (viewName === 'analise') {
         renderizarGraficoAnalise();
+    } else if (viewName === 'relatorios') {
+        renderizarRelatorios();
     }
 }

@@ -154,7 +154,7 @@ async function buscarRecepcionadorPorRegistro(matriculaDigitada) {
         return;
     }
 
-    const temPermissao = permissoesEspeciais[matriculaLogada] === true;
+    const temPermissao = (perfilAtual === 'recepcionista') || (permissoesEspeciais[matriculaLogada] === true);
 
     if (!temPermissao) {
         recepcionadorValidoAtual = null;
