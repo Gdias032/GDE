@@ -18,3 +18,8 @@
 ## 4. Roteamento Manual Condicional
 - **Decisão**: O módulo `navigation.js` intercepta funções de links ao redor de todo projeto simulando um Router.
 - **Contexto/Consequência**: Uma decisão simples para barrar a visualização de abas não referentes ao perfil atual. Impede "Deep Linking" (URLs que podem ir direto para uma área do sistema, pois a URL no navegador será sempre fixa `/index.html`), quebrando certos pilares da acessibilidade da Web.
+
+## 5. Arquitetura de BI (Business Intelligence) Dinâmico
+- **Decisão**: A extração de dados para relatórios não é feita por queries cruas do frontend nem pela API padrão do PostgREST. Foram implementadas Views analíticas (`vw_bi_planta`, `vw_bi_eventos`), uma tabela de catálogo (`bi_catalogo`) e funções RPC (`bi_consultar`) para estruturar métricas e dimensões, permitindo cross-filtering.
+- **Contexto**: Facilita a manutenção do catálogo de dimensões e métricas diretamente no banco, impedindo injeções de SQL. Para evitar conflitos e falsos-positivos na validação de permissões de tabelas base pelo frontend, a política `SECURITY DEFINER` foi atribuída às RPCs.
+- **Consequência**: Forte descentralização da lógica de negócios, empurrando a agregação para a camada de dados (PostgreSQL) e permitindo dashboards dinâmicos no JS que dependem estritamente da sanidade dos dados do catálogo.

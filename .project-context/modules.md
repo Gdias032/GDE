@@ -20,7 +20,8 @@ O projeto é fragmentado nos seguintes módulos principais dentro do diretório 
 - `planta.js`: Lógica para renderizar a matriz/grid de máquinas e o painel de análise lateral (Dashboard rápido).
 - `recepcao.js`: Gerencia a tela de atuação detalhada em uma máquina específica (alteração de status de andamento, apontamento de manutenções).
 - `tabelas.js`: Renderiza as exibições tabulares como a lista de recepções pendentes e histórico.
-- `analise.js`: Responsável por instanciar e atualizar os gráficos interativos (via Chart.js) da seção de Business Intelligence (BI).
+- `analise.js`: Responsável por instanciar e atualizar os gráficos interativos (via Chart.js) da seção de Análise Rápida.
+- `relatorios.js`: Construtor de Relatórios dinâmicos avançados de BI (Business Intelligence) com recursos de cross-filtering, atuando em conjunto com views SQL e funções RPC (bi_consultar, bi_valores).
 
 ## Funcionalidades Auxiliares (Domain Utilities)
 - `permissoes.js`: Lida com todo o ciclo de vida das solicitações de autorização e aprovações.

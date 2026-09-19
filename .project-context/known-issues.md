@@ -13,3 +13,8 @@ A atual estratégia acoplada do *Supabase Realtime* (em `state.js`) impõe que, 
 
 ## 4. Poluição de Escopo e Dependências Cíclicas
 O `index.html` estipula uma corrente monolítica de mais de 15 tags `<script>` na ordem exata e inquebrável estipulada pelo programador. A não aderência de *EcmaScript Modules* (import/export) não deixa claro quais blocos exportam ou dependem diretamente das variáveis declaradas em outros blocos. Esta arquitetura frágil pode quebrar em implementações triviais por mera reordenação assíncrona ou desatenção em novos mantenedores da base.
+
+## Problemas Recém Resolvidos (Setembro/2026)
+- **Falta da Coluna `avatar_base64`**: A tabela `usuarios` estava disparando o erro `42703 column avatar_base64 does not exist` pois a coluna não existia em bancos criados recentemente. A coluna foi adicionada ao `schema.sql` oficial e populada.
+- **Conflitos de Papéis e Permissões (RBAC)**: Ajustadas as regras de negócio no frontend (ex: em `funcionarios.js`) para garantir que os diferentes papéis operacionais consigam atuar em seus respectivos módulos sem esbarrar indevidamente em tabelas de controle de acesso não relacionadas ao seu fluxo.
+- **Integração do Módulo de BI (Construtor v2)**: Adicionada tela rica de relatórios analíticos sem causar regressões na interface legada de plantas, encapsulando lógicas sensíveis de filtro nas procedures do Postgres com RLS contornado pontualmente.
