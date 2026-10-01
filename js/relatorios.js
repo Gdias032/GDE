@@ -7,27 +7,83 @@
 
 let chartProgressoLinha = null;
 let chartPerformanceSemanas = null;
-let metaGlobal = parseInt(localStorage.getItem('bi_meta')) || 120;
+let metaMensal = parseInt(localStorage.getItem('bi_meta_mensal')) || 120;
+let metaAnual = parseInt(localStorage.getItem('bi_meta_anual')) || 1440;
 
-async function atualizarMeta(valor) {
-    metaGlobal = parseInt(valor) || 120;
-    localStorage.setItem('bi_meta', metaGlobal);
+// -- Caching Layer --
+let biCache = null;
+let biCacheTime = 0;
+let biCachePromise = null;
+const CACHE_TTL = 30000; // 30 seconds
+
+async function fetchPlantaData(force = false) {
+    const now = Date.now();
+    if (!force && biCache && (now - biCacheTime < CACHE_TTL)) {
+        return biCache;
+    }
+    if (!force && biCachePromise) {
+        return await biCachePromise;
+    }
+    
+    biCachePromise = supabaseClient.from('vw_bi_planta').select('*').then(({ data, error }) => {
+        if (error) {
+            console.error('Erro ao buscar planta:', error);
+            biCachePromise = null;
+            return [];
+        }
+        biCache = data || [];
+        biCacheTime = Date.now();
+        biCachePromise = null;
+        return biCache;
+    });
+
+    return await biCachePromise;
+}
+
+// -- Skeleton Loaders --
+function mostrarSkeletonBI() {
+    const elementos = [
+        'bi-val-progresso', 'bi-val-concluido', 'bi-val-andamento'
+    ];
+    elementos.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('skeleton');
+    });
+    
+    const tbody = document.getElementById('tabela-ranking-body');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;"><div class="skeleton" style="width: 100%; height: 20px;"></div></td></tr>';
+}
+
+function esconderSkeletonBI() {
+    const elementos = [
+        'bi-val-progresso', 'bi-val-concluido', 'bi-val-andamento'
+    ];
+    elementos.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove('skeleton');
+    });
+}
+
+async function atualizarMetaMensal(valor) {
+    metaMensal = parseInt(valor) || 120;
+    localStorage.setItem('bi_meta_mensal', metaMensal);
+    renderizarRelatorios(); // re-renderiza para atualizar os cálculos
+}
+
+async function atualizarMetaAnual(valor) {
+    metaAnual = parseInt(valor) || 1440;
+    localStorage.setItem('bi_meta_anual', metaAnual);
     renderizarRelatorios(); // re-renderiza para atualizar os cálculos
 }
 
 async function renderizarRelatorios() {
-    // 1. Buscar dados da planta
-    const { data: plantaData, error: errPlanta } = await supabaseClient
-        .from('vw_bi_planta')
-        .select('*');
+    // Mostrar loader skeleton na UI
+    mostrarSkeletonBI();
 
-    if (errPlanta) {
-        console.error('Erro ao buscar planta:', errPlanta);
-        return;
-    }
+    // 1. Buscar dados da planta usando cache central
+    const maquinas = await fetchPlantaData();
 
-    const maquinas = plantaData || [];
-    const totalMaquinas = maquinas.length || metaGlobal; // usa a meta se não houver máquinas
+    const totalMaquinas = maquinas.length || metaAnual; // usa a meta anual se não houver máquinas
     const concluidas = maquinas.filter(m => m.status === 'green').length;
     const emAndamento = maquinas.filter(m => m.status === 'yellow' || m.status === 'purple').length;
     
@@ -42,16 +98,24 @@ async function renderizarRelatorios() {
         document.getElementById('bi-val-concluido').textContent = concluidas;
         document.getElementById('bi-val-andamento').textContent = emAndamento;
         
-        const inputMeta = document.getElementById('bi-input-meta');
-        if (inputMeta) inputMeta.value = metaGlobal;
-        const rangeMeta = document.getElementById('bi-range-meta');
-        if (rangeMeta) rangeMeta.value = metaGlobal;
+        const inputMetaMensal = document.getElementById('bi-input-meta-mensal');
+        if (inputMetaMensal) inputMetaMensal.value = metaMensal;
+        const rangeMetaMensal = document.getElementById('bi-range-meta-mensal');
+        if (rangeMetaMensal) rangeMetaMensal.value = metaMensal;
+
+        const inputMetaAnual = document.getElementById('bi-input-meta-anual');
+        if (inputMetaAnual) inputMetaAnual.value = metaAnual;
+        const rangeMetaAnual = document.getElementById('bi-range-meta-anual');
+        if (rangeMetaAnual) rangeMetaAnual.value = metaAnual;
 
         // Progresso por Linha
         renderizarProgressoPorLinha(maquinas);
 
         // Ranking Mantenedores
         renderizarRankingMantenedores(maquinas);
+
+        // Esconder loader skeleton
+        esconderSkeletonBI();
 
         // Performance Semanal
         await renderizarPerformanceSemanal();
@@ -180,10 +244,7 @@ async function renderizarPerformanceSemanal(isDiaEspecifico = false) {
         mesInput.value = mesVal;
     }
 
-    const { data: plantaData } = await supabaseClient
-        .from('vw_bi_planta')
-        .select('*');
-    const maquinas = plantaData || [];
+    const maquinas = await fetchPlantaData();
 
     let groupsData = [];
 
@@ -214,15 +275,27 @@ async function renderizarPerformanceSemanal(isDiaEspecifico = false) {
         let currentDate = new Date(year, month - 1, 1);
         let currentWeekNum = 1;
 
+        const checkboxFds = document.getElementById('bi-check-fds');
+        const incluirFds = checkboxFds ? checkboxFds.checked : (localStorage.getItem('bi_incluir_fds') === 'true');
+
         while (currentDate.getMonth() === month - 1) {
-            while ((currentDate.getDay() === 0 || currentDate.getDay() === 6) && currentDate.getMonth() === month - 1) {
-                currentDate.setDate(currentDate.getDate() + 1);
+            if (!incluirFds) {
+                while ((currentDate.getDay() === 0 || currentDate.getDay() === 6) && currentDate.getMonth() === month - 1) {
+                    currentDate.setDate(currentDate.getDate() + 1);
+                }
             }
             if (currentDate.getMonth() !== month - 1) break;
 
             let startOfWeek = new Date(currentDate);
-            while (currentDate.getDay() !== 5 && currentDate.getMonth() === month - 1) {
-                currentDate.setDate(currentDate.getDate() + 1);
+            
+            if (!incluirFds) {
+                while (currentDate.getDay() !== 5 && currentDate.getMonth() === month - 1) {
+                    currentDate.setDate(currentDate.getDate() + 1);
+                }
+            } else {
+                while (currentDate.getDay() !== 6 && currentDate.getMonth() === month - 1) {
+                    currentDate.setDate(currentDate.getDate() + 1);
+                }
             }
             if (currentDate.getMonth() !== month - 1) currentDate.setDate(0); 
 
@@ -321,6 +394,24 @@ function escapar(texto) {
 }
 
 views.relatorios = `
+    <style>
+        .skeleton {
+            background: linear-gradient(90deg, var(--input-bg) 25%, var(--border-color) 50%, var(--input-bg) 75%);
+            background-size: 200% 100%;
+            animation: skeleton-loading 1.5s infinite;
+            border-radius: 4px;
+            color: transparent !important;
+            user-select: none;
+            pointer-events: none;
+        }
+        .skeleton * {
+            visibility: hidden;
+        }
+        @keyframes skeleton-loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+    </style>
     <div class="bi-dashboard-grid">
         <!-- Top Row -->
         <div class="bi-top-row">
@@ -350,11 +441,17 @@ views.relatorios = `
                     </div>
                 </div>
                 <div class="bi-stat-main" id="bi-val-concluido">0</div>
-                <div class="bi-sparkline" style="display: flex; align-items: center; padding-top: 10px;">
-                    <input type="range" id="bi-range-meta" min="1" max="500" value="${metaGlobal}" oninput="document.getElementById('bi-input-meta').value=this.value; atualizarMeta(this.value)" style="width: 100%; accent-color: var(--status-yellow); cursor: pointer; margin: 0;">
-                </div>
-                <div class="bi-card-footer justify-end">
-                    <span>Meta: <input type="text" inputmode="numeric" id="bi-input-meta" onchange="atualizarMeta(this.value)" oninput="document.getElementById('bi-range-meta').value=this.value" value="${metaGlobal}" style="width: 40px; background: transparent; border: none; border-bottom: 1px solid var(--border-color); color: var(--text-main); padding: 0px 2px; font-size: 13px; font-weight: bold; outline: none; margin-left: 4px; text-align: center;"></span>
+                <div class="bi-sparkline" style="display: flex; flex-direction: column; gap: 4px; padding-top: 0;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 11px; color: var(--text-muted); width: 75px;">Meta Mensal</span>
+                        <input type="range" id="bi-range-meta-mensal" min="1" max="500" value="${metaMensal}" oninput="document.getElementById('bi-input-meta-mensal').value=this.value; atualizarMetaMensal(this.value)" style="flex: 1; accent-color: var(--status-yellow); cursor: pointer; margin: 0;">
+                        <input type="text" inputmode="numeric" id="bi-input-meta-mensal" onchange="atualizarMetaMensal(this.value)" oninput="document.getElementById('bi-range-meta-mensal').value=this.value" value="${metaMensal}" style="width: 40px; background: transparent; border: none; border-bottom: 1px solid var(--border-color); color: var(--text-main); padding: 0px 2px; font-size: 12px; font-weight: bold; outline: none; text-align: center;">
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 11px; color: var(--text-muted); width: 75px;">Meta Anual</span>
+                        <input type="range" id="bi-range-meta-anual" min="1" max="6000" value="${metaAnual}" oninput="document.getElementById('bi-input-meta-anual').value=this.value; atualizarMetaAnual(this.value)" style="flex: 1; accent-color: var(--status-green); cursor: pointer; margin: 0;">
+                        <input type="text" inputmode="numeric" id="bi-input-meta-anual" onchange="atualizarMetaAnual(this.value)" oninput="document.getElementById('bi-range-meta-anual').value=this.value" value="${metaAnual}" style="width: 40px; background: transparent; border: none; border-bottom: 1px solid var(--border-color); color: var(--text-main); padding: 0px 2px; font-size: 12px; font-weight: bold; outline: none; text-align: center;">
+                    </div>
                 </div>
             </div>
 
@@ -412,6 +509,9 @@ views.relatorios = `
                 <div class="bi-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <h3 style="font-size: 16px; text-transform: none; color: var(--text-light);">Performance Semanal da Produção</h3>
                     <div style="display: flex; gap: 10px; position: relative;">
+                        <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-muted); cursor: pointer; margin-right: 5px;">
+                            <input type="checkbox" id="bi-check-fds" onchange="localStorage.setItem('bi_incluir_fds', this.checked); renderizarPerformanceSemanal();" ${localStorage.getItem('bi_incluir_fds') === 'true' ? 'checked' : ''} style="accent-color: var(--accent-blue);"> Incluir FDS
+                        </label>
                         <input type="month" id="bi-input-mes" title="Filtrar por Mês" onchange="renderizarPerformanceSemanal()" style="background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; padding: 4px 8px; font-size: 13px; outline: none; cursor: pointer;">
                         
                         <button onclick="document.getElementById('bi-input-dia').showPicker()" title="Ver dia exato" style="background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 4px; padding: 4px 8px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
@@ -432,13 +532,12 @@ async function renderizarRankingCompleto() {
     if (!tbody) return;
 
     // Estado de carregamento
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">Carregando ranking...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;"><div class="skeleton" style="width: 100%; height: 20px;"></div></td></tr>';
 
-    // Busca os dados das máquinas e os usuários para puxar a matrícula
-    const { data: plantaData } = await supabaseClient.from('vw_bi_planta').select('*');
+    // Busca os dados das máquinas usando cache
+    const maquinas = await fetchPlantaData();
     const { data: usuariosData } = await supabaseClient.from('usuarios').select('nome_completo, matricula');
 
-    const maquinas = plantaData || [];
     const usuarios = usuariosData || [];
     
     // Mapeia nome_completo -> matrícula
@@ -471,8 +570,8 @@ async function renderizarRankingCompleto() {
         return;
     }
 
-    // A meta global é usada para calcular a Eficiência
-    let meta = parseInt(localStorage.getItem('bi_meta')) || 120;
+    // A meta mensal é usada para calcular a Eficiência
+    let meta = parseInt(localStorage.getItem('bi_meta_mensal')) || 120;
 
     let html = '';
     ranking.forEach((item, index) => {
