@@ -63,5 +63,7 @@ function navigateTo(viewName, parametro = null) {
         renderizarGraficoAnalise();
     } else if (viewName === 'relatorios') {
         renderizarRelatorios();
+    } else if (viewName === 'rankingMantenedores') {
+        renderizarRankingCompleto();
     }
 }

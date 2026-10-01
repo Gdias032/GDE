@@ -53,17 +53,7 @@ const views = {
         </div>
     </div>`,
 
-    analise: `
-    <div class="bi-dashboard">
-        <div class="card">
-            <h3 style="font-size:12px; color:var(--text-muted); font-weight:700;">PROGRESSO TOTAL</h3>
-            <div class="stat-value" id="stat-value-bi">0%</div>
-        </div>
-        <div class="card col-span-3" style="height: 320px;">
-            <h3 style="font-size:14px; margin-bottom: 15px; font-weight:600;">Registros Diários</h3>
-            <canvas id="lineChart"></canvas>
-        </div>
-    </div>`,
+
 
     recepcao: `
     <div class="recepcao-container">
@@ -186,6 +176,31 @@ const views = {
                     </tr>
                 </thead>
                 <tbody id="tabela-solicitacoes-body"></tbody>
+            </table>
+        </div>
+    </div>`,
+
+    rankingMantenedores: `
+    <div class="recepcao-container">
+        <div class="recepcao-header" style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+            <h2>Eficácia e Desempenho de Mantenedores</h2>
+            <button class="btn-cancelar" onclick="navigateTo('relatorios')">Voltar ao Dashboard</button>
+        </div>
+        <div class="card" style="margin-top: 15px; padding: 0; overflow-y: auto; overflow-x: auto; max-height: 65vh;">
+            <table class="tabela-recepcoes">
+                <thead style="position: sticky; top: 0; z-index: 10;">
+                    <tr>
+                        <th style="width: 80px; text-align: center;">Posição</th>
+                        <th>Nome do Mantenedor</th>
+                        <th>Matrícula</th>
+                        <th style="text-align: center;">Sucessos <br>(Aprovados)</th>
+                        <th style="text-align: center;">Negados <br>(Rejeitados)</th>
+                        <th style="text-align: center;">Eficiência <br>(Taxa por Meta)</th>
+                    </tr>
+                </thead>
+                <tbody id="tabela-ranking-body">
+                    <tr><td colspan="6" style="text-align: center; padding: 20px;">Carregando ranking...</td></tr>
+                </tbody>
             </table>
         </div>
     </div>`

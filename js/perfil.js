@@ -87,6 +87,7 @@ function abrirModalPerfil() {
                 <span>Alterar foto</span>
             </div>
         </div>
+        ${foto ? `<button style="background: none; border: none; color: var(--status-red); font-size: 11px; margin-top: 8px; cursor: pointer; text-decoration: underline;" onclick="removerFotoPerfil()">Remover foto</button>` : ''}
         <input type="file" id="input-foto-perfil" accept="image/*" style="display:none;" onchange="trocarFotoPerfil(this)">
         <h3 style="margin-top: 16px; color: var(--text-light); font-size: 17px;">${escapeHtml(nome)}</h3>
         <p style="color: var(--text-muted); font-size: 13px; margin-top: 2px;">${escapeHtml(cargo)}</p>
@@ -140,14 +141,34 @@ async function trocarFotoPerfil(input) {
         usuarioLogadoSessao.avatar = dataUrl;
         renderizarAvatarUsuario();
 
-        const preview = document.getElementById('perfil-avatar-preview');
-        if (preview) {
-            preview.style.backgroundImage = `url('${dataUrl}')`;
-            preview.innerText = '';
-        }
+        // Atualiza a interface do modal reabrindo-o para mostrar o botão de remover foto
+        abrirModalPerfil();
         mostrarAlertaModal('Foto Atualizada', 'Sua foto de perfil foi atualizada com sucesso!', 'success');
     };
     leitor.readAsDataURL(arquivo);
+}
+
+async function removerFotoPerfil() {
+    if (!usuarioLogadoSessao || !usuarioLogadoSessao.registro) {
+        mostrarAlertaModal('Erro', 'Usuário não logado.', 'warning');
+        return;
+    }
+
+    const { error } = await supabaseClient
+        .from('usuarios')
+        .update({ avatar_base64: null })
+        .eq('id', usuarioLogadoSessao.registro);
+
+    if (error) {
+        console.error('Erro ao remover foto', error);
+        mostrarAlertaModal('Erro', 'Erro ao remover a foto no banco de dados.', 'danger');
+        return;
+    }
+
+    usuarioLogadoSessao.avatar = null;
+    renderizarAvatarUsuario();
+    abrirModalPerfil(); // Reabre para atualizar a UI do modal
+    mostrarAlertaModal('Sucesso', 'Sua foto de perfil foi removida.', 'success');
 }
 
 // Removido salvarStorageSeguroBruto e localStorage.

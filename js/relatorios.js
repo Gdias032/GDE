@@ -1,485 +1,317 @@
 /**
- * relatorios.js — Construtor de Relatórios (v2)
+ * relatorios.js — Dashboard BI Fixo
  * ---------------------------------------------------------------------------
- * Painel com vários visuais na mesma tela, filtros por valor e cross-filter:
- * clicar numa barra de um gráfico filtra todos os outros.
- *
- * O front NUNCA monta SQL. Envia nomes de campo para bi_consultar(), que
- * valida tudo contra bi_catalogo antes de executar.
- *
- * A view desta tela é registrada no objeto `views` no fim do arquivo — o
- * views.js não precisa ser alterado.
+ * Dashboard de BI com layout fixo, populado com dados da planta e histórico.
  * ---------------------------------------------------------------------------
  */
 
-let catalogoBI = [];
-let proximoIdVisual = 1;
+let chartProgressoLinha = null;
+let chartPerformanceSemanas = null;
+let metaGlobal = parseInt(localStorage.getItem('bi_meta')) || 120;
 
-const painelBI = {
-    periodo: 30,
-    filtros: [],   // [{ campo, valor }]
-    visuais: []    // [{ id, fonte, dimensao, metrica, agregacao, tipo, chart }]
-};
-
-const PALETA_BI = [
-    '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#3b82f6',
-    '#ec4899', '#14b8a6', '#f97316', '#a855f7', '#22c55e'
-];
-
-/** Painel inicial — quatro visuais já configurados. */
-const VISUAIS_PADRAO = [
-    { fonte: 'vw_bi_planta',  dimensao: 'status',  metrica: 'maquinas', agregacao: 'soma', tipo: 'doughnut' },
-    { fonte: 'vw_bi_planta',  dimensao: 'linha',   metrica: 'maquinas', agregacao: 'soma', tipo: 'bar' },
-    { fonte: 'vw_bi_eventos', dimensao: 'dia',     metrica: 'eventos',  agregacao: 'soma', tipo: 'line' },
-    { fonte: 'vw_bi_eventos', dimensao: 'usuario', metrica: 'eventos',  agregacao: 'soma', tipo: 'barra-h' }
-];
-
-
-/* =========================================================================
- * Ciclo de vida
- * ====================================================================== */
+async function atualizarMeta(valor) {
+    metaGlobal = parseInt(valor) || 120;
+    localStorage.setItem('bi_meta', metaGlobal);
+    renderizarRelatorios(); // re-renderiza para atualizar os cálculos
+}
 
 async function renderizarRelatorios() {
-    if (!document.getElementById('bi-grade')) return;
+    // 1. Buscar dados da planta
+    const { data: plantaData, error: errPlanta } = await supabaseClient
+        .from('vw_bi_planta')
+        .select('*');
 
-    if (catalogoBI.length === 0) {
-        const { data, error } = await supabaseClient
-            .from('bi_catalogo')
-            .select('fonte, fonte_rotulo, coluna, coluna_rotulo, papel, ordem')
-            .order('ordem', { ascending: true });
-
-        if (error) {
-            console.error('Catálogo BI:', error);
-            document.getElementById('bi-grade').innerHTML =
-                '<div class="card bi-vazio">Não foi possível carregar o catálogo de dados.</div>';
-            return;
-        }
-        catalogoBI = data || [];
-    }
-
-    // Monta o painel padrão apenas na primeira visita da sessão
-    if (painelBI.visuais.length === 0) {
-        VISUAIS_PADRAO.forEach(v => painelBI.visuais.push({ ...v, id: proximoIdVisual++, chart: null }));
-    }
-
-    document.getElementById('bi-periodo').value = String(painelBI.periodo);
-    montarSeletorFiltro();
-    desenharGrade();
-    renderizarChipsFiltro();
-    atualizarTodosVisuais();
-}
-
-
-/* =========================================================================
- * Filtros
- * ====================================================================== */
-
-/** Popula o seletor de campo com todas as dimensões de todas as fontes. */
-function montarSeletorFiltro() {
-    const sel = document.getElementById('bi-filtro-campo');
-    if (!sel) return;
-
-    const vistos = new Set();
-    const opcoes = [];
-
-    catalogoBI
-        .filter(c => c.papel === 'dimensao')
-        .forEach(c => {
-            if (vistos.has(c.coluna)) return;
-            vistos.add(c.coluna);
-            opcoes.push(`<option value="${c.coluna}" data-fonte="${c.fonte}">${c.coluna_rotulo}</option>`);
-        });
-
-    sel.innerHTML = '<option value="">Filtrar por…</option>' + opcoes.join('');
-}
-
-/** Ao escolher um campo, busca os valores possíveis. */
-async function carregarValoresFiltro() {
-    const selCampo = document.getElementById('bi-filtro-campo');
-    const selValor = document.getElementById('bi-filtro-valor');
-    const campo = selCampo.value;
-
-    if (!campo) {
-        selValor.innerHTML = '<option value="">—</option>';
-        selValor.disabled = true;
+    if (errPlanta) {
+        console.error('Erro ao buscar planta:', errPlanta);
         return;
     }
 
-    const fonte = selCampo.options[selCampo.selectedIndex].dataset.fonte;
-    selValor.disabled = true;
-    selValor.innerHTML = '<option value="">Carregando…</option>';
+    const maquinas = plantaData || [];
+    const totalMaquinas = maquinas.length || metaGlobal; // usa a meta se não houver máquinas
+    const concluidas = maquinas.filter(m => m.status === 'green').length;
+    const emAndamento = maquinas.filter(m => m.status === 'yellow' || m.status === 'purple').length;
+    
+    const pctTotal = Math.round((concluidas / totalMaquinas) * 100) || 0;
 
-    const { data, error } = await supabaseClient.rpc('bi_valores', {
-        p_fonte: fonte,
-        p_campo: campo,
-        p_dias: fonte === 'vw_bi_planta' ? null : painelBI.periodo
+    // Atualiza Top Row
+    const valProgresso = document.getElementById('bi-val-progresso');
+    if (valProgresso) {
+        valProgresso.textContent = pctTotal + '%';
+        document.getElementById('bi-bar-progresso').style.width = pctTotal + '%';
+        
+        document.getElementById('bi-val-concluido').textContent = concluidas;
+        document.getElementById('bi-val-andamento').textContent = emAndamento;
+        
+        const inputMeta = document.getElementById('bi-input-meta');
+        if (inputMeta) inputMeta.value = metaGlobal;
+        const rangeMeta = document.getElementById('bi-range-meta');
+        if (rangeMeta) rangeMeta.value = metaGlobal;
+
+        // Progresso por Linha
+        renderizarProgressoPorLinha(maquinas);
+
+        // Ranking Mantenedores
+        renderizarRankingMantenedores(maquinas);
+
+        // Performance Semanal
+        await renderizarPerformanceSemanal();
+    }
+}
+
+function renderizarProgressoPorLinha(maquinas) {
+    const linhas = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+    const concluidasPorLinha = [];
+    const andamentoPorLinha = [];
+    const negadasPorLinha = [];
+
+    linhas.forEach(linha => {
+        const mLinha = maquinas.filter(m => m.linha === linha);
+        concluidasPorLinha.push(mLinha.filter(m => m.status === 'green').length);
+        andamentoPorLinha.push(mLinha.filter(m => m.status === 'yellow' || m.status === 'purple').length);
+        negadasPorLinha.push(mLinha.filter(m => m.status === 'red').length);
     });
 
-    if (error) {
-        console.error('bi_valores:', error);
-        selValor.innerHTML = '<option value="">Erro ao carregar</option>';
-        return;
-    }
+    const ctx = document.getElementById('barChartLinhas');
+    if (!ctx) return;
 
-    selValor.innerHTML = '<option value="">Escolha um valor…</option>' +
-        (data || []).map(r => `<option value="${escapar(r.valor)}">${escapar(r.valor)}</option>`).join('');
-    selValor.disabled = false;
-}
-
-function aplicarFiltroManual() {
-    const campo = document.getElementById('bi-filtro-campo').value;
-    const valor = document.getElementById('bi-filtro-valor').value;
-    if (!campo || !valor) return;
-
-    alternarFiltro(campo, valor);
-    document.getElementById('bi-filtro-valor').value = '';
-}
-
-/** Adiciona o filtro, ou remove se já estiver ativo com o mesmo valor. */
-function alternarFiltro(campo, valor) {
-    const existente = painelBI.filtros.findIndex(f => f.campo === campo);
-
-    if (existente >= 0) {
-        const mesmoValor = painelBI.filtros[existente].valor === String(valor);
-        painelBI.filtros.splice(existente, 1);
-        if (!mesmoValor) painelBI.filtros.push({ campo, valor: String(valor) });
-    } else {
-        painelBI.filtros.push({ campo, valor: String(valor) });
-    }
-
-    renderizarChipsFiltro();
-    atualizarTodosVisuais();
-}
-
-function removerFiltro(campo) {
-    painelBI.filtros = painelBI.filtros.filter(f => f.campo !== campo);
-    renderizarChipsFiltro();
-    atualizarTodosVisuais();
-}
-
-function limparFiltros() {
-    painelBI.filtros = [];
-    renderizarChipsFiltro();
-    atualizarTodosVisuais();
-}
-
-function renderizarChipsFiltro() {
-    const alvo = document.getElementById('bi-chips');
-    if (!alvo) return;
-
-    if (painelBI.filtros.length === 0) {
-        alvo.innerHTML = '<span class="bi-sem-filtro">Nenhum filtro ativo — clique num gráfico para filtrar</span>';
-        return;
-    }
-
-    alvo.innerHTML = painelBI.filtros.map(f => `
-        <span class="bi-chip">
-            <strong>${escapar(rotuloDeColuna(f.campo))}:</strong> ${escapar(f.valor)}
-            <button onclick="removerFiltro('${escapar(f.campo)}')" title="Remover">&times;</button>
-        </span>`).join('') +
-        `<button class="bi-chip-limpar" onclick="limparFiltros()">Limpar tudo</button>`;
-}
-
-function mudarPeriodo() {
-    painelBI.periodo = parseInt(document.getElementById('bi-periodo').value, 10);
-    atualizarTodosVisuais();
-}
-
-
-/* =========================================================================
- * Grade de visuais
- * ====================================================================== */
-
-function desenharGrade() {
-    const grade = document.getElementById('bi-grade');
-    if (!grade) return;
-
-    grade.innerHTML = painelBI.visuais.map(v => `
-        <div class="card bi-visual" id="bi-visual-${v.id}">
-            <div class="bi-visual-topo">
-                <h4 id="bi-titulo-${v.id}">—</h4>
-                <div class="bi-visual-acoes">
-                    <button onclick="alternarConfig(${v.id})" title="Configurar">&#9881;</button>
-                    <button onclick="removerVisual(${v.id})" title="Remover">&times;</button>
-                </div>
-            </div>
-
-            <div class="bi-visual-config" id="bi-config-${v.id}" style="display:none;">
-                <select onchange="mudarFonteVisual(${v.id}, this.value)" id="bi-f-${v.id}"></select>
-                <select onchange="mudarCampoVisual(${v.id}, 'dimensao', this.value)" id="bi-d-${v.id}"></select>
-                <select onchange="mudarCampoVisual(${v.id}, 'metrica', this.value)" id="bi-m-${v.id}"></select>
-                <select onchange="mudarCampoVisual(${v.id}, 'agregacao', this.value)" id="bi-a-${v.id}">
-                    <option value="soma">Soma</option>
-                    <option value="media">Média</option>
-                    <option value="contar">Contagem</option>
-                    <option value="maximo">Máximo</option>
-                    <option value="minimo">Mínimo</option>
-                </select>
-                <select onchange="mudarCampoVisual(${v.id}, 'tipo', this.value)" id="bi-t-${v.id}">
-                    <option value="bar">Barras verticais</option>
-                    <option value="barra-h">Barras horizontais</option>
-                    <option value="line">Linha</option>
-                    <option value="doughnut">Rosca</option>
-                    <option value="pie">Pizza</option>
-                </select>
-            </div>
-
-            <div class="bi-visual-corpo">
-                <div class="bi-aviso" id="bi-aviso-${v.id}">Carregando…</div>
-                <canvas id="bi-canvas-${v.id}"></canvas>
-            </div>
-        </div>`).join('');
-
-    painelBI.visuais.forEach(v => preencherSelectsVisual(v));
-}
-
-function preencherSelectsVisual(v) {
-    const fontes = [];
-    catalogoBI.forEach(c => {
-        if (!fontes.some(f => f.fonte === c.fonte)) fontes.push({ fonte: c.fonte, rotulo: c.fonte_rotulo });
-    });
-
-    const selF = document.getElementById(`bi-f-${v.id}`);
-    if (selF) {
-        selF.innerHTML = fontes.map(f =>
-            `<option value="${f.fonte}" ${f.fonte === v.fonte ? 'selected' : ''}>${f.rotulo}</option>`).join('');
-    }
-
-    const dims = catalogoBI.filter(c => c.fonte === v.fonte && c.papel === 'dimensao');
-    const mets = catalogoBI.filter(c => c.fonte === v.fonte && c.papel === 'metrica');
-
-    const selD = document.getElementById(`bi-d-${v.id}`);
-    if (selD) {
-        selD.innerHTML = dims.map(d =>
-            `<option value="${d.coluna}" ${d.coluna === v.dimensao ? 'selected' : ''}>${d.coluna_rotulo}</option>`).join('');
-    }
-
-    const selM = document.getElementById(`bi-m-${v.id}`);
-    if (selM) {
-        selM.innerHTML = mets.map(m =>
-            `<option value="${m.coluna}" ${m.coluna === v.metrica ? 'selected' : ''}>${m.coluna_rotulo}</option>`).join('');
-    }
-
-    const selA = document.getElementById(`bi-a-${v.id}`);
-    if (selA) selA.value = v.agregacao;
-    const selT = document.getElementById(`bi-t-${v.id}`);
-    if (selT) selT.value = v.tipo;
-}
-
-function alternarConfig(id) {
-    const el = document.getElementById(`bi-config-${id}`);
-    if (el) el.style.display = (el.style.display === 'none') ? 'grid' : 'none';
-}
-
-function mudarFonteVisual(id, fonte) {
-    const v = painelBI.visuais.find(x => x.id === id);
-    if (!v) return;
-
-    v.fonte = fonte;
-    const dims = catalogoBI.filter(c => c.fonte === fonte && c.papel === 'dimensao');
-    const mets = catalogoBI.filter(c => c.fonte === fonte && c.papel === 'metrica');
-    v.dimensao = dims.length ? dims[0].coluna : null;
-    v.metrica  = mets.length ? mets[0].coluna : null;
-
-    preencherSelectsVisual(v);
-    atualizarVisual(v);
-}
-
-function mudarCampoVisual(id, campo, valor) {
-    const v = painelBI.visuais.find(x => x.id === id);
-    if (!v) return;
-    v[campo] = valor;
-    atualizarVisual(v);
-}
-
-function adicionarVisual() {
-    painelBI.visuais.push({
-        id: proximoIdVisual++,
-        fonte: 'vw_bi_eventos',
-        dimensao: 'acao',
-        metrica: 'eventos',
-        agregacao: 'soma',
-        tipo: 'bar',
-        chart: null
-    });
-    desenharGrade();
-    atualizarTodosVisuais();
-}
-
-function removerVisual(id) {
-    const v = painelBI.visuais.find(x => x.id === id);
-    if (v && v.chart) v.chart.destroy();
-    painelBI.visuais = painelBI.visuais.filter(x => x.id !== id);
-    desenharGrade();
-    atualizarTodosVisuais();
-}
-
-
-/* =========================================================================
- * Consulta e desenho
- * ====================================================================== */
-
-function atualizarTodosVisuais() {
-    painelBI.visuais.forEach(v => atualizarVisual(v));
-}
-
-async function atualizarVisual(v) {
-    const titulo = document.getElementById(`bi-titulo-${v.id}`);
-    if (titulo) {
-        titulo.textContent = `${rotuloDeColuna(v.metrica, v.fonte)} por ${rotuloDeColuna(v.dimensao, v.fonte)}`;
-    }
-
-    if (!v.fonte || !v.dimensao || !v.metrica) return;
-
-    // Dimensões cronológicas em ordem natural; o resto por ranking
-    const cronologicas = ['dia', 'mes', 'hora'];
-    const ordenar = cronologicas.includes(v.dimensao) ? 'rotulo' : 'valor';
-    const semPeriodo = (v.fonte === 'vw_bi_planta');
-
-    const { data, error } = await supabaseClient.rpc('bi_consultar', {
-        p_fonte: v.fonte,
-        p_dimensao: v.dimensao,
-        p_metrica: v.metrica,
-        p_agregacao: v.agregacao,
-        p_dias: semPeriodo ? null : painelBI.periodo,
-        p_limite: 15,
-        p_ordenar: ordenar,
-        p_filtros: painelBI.filtros
-    });
-
-    if (error) {
-        console.error('bi_consultar:', error);
-        avisoVisual(v, 'Erro: ' + error.message);
-        return;
-    }
-
-    if (!data || data.length === 0) {
-        avisoVisual(v, 'Sem dados para essa combinação.');
-        return;
-    }
-
-    esconderAvisoVisual(v);
-    desenharVisual(v, data);
-}
-
-function desenharVisual(v, linhas) {
-    const canvas = document.getElementById(`bi-canvas-${v.id}`);
-    if (!canvas) return;
-
-    const labels   = linhas.map(r => String(r.rotulo));
-    const valores  = linhas.map(r => Number(r.valor));
-    const circular = (v.tipo === 'doughnut' || v.tipo === 'pie');
-
-    if (v.chart) v.chart.destroy();
+    if (chartProgressoLinha) chartProgressoLinha.destroy();
 
     const corTexto = getComputedStyle(document.body).getPropertyValue('--text-muted').trim() || '#94a3b8';
     const corGrade = 'rgba(148, 163, 184, 0.15)';
 
-    // Se há filtro ativo nesta dimensão, o valor filtrado fica em destaque
-    const filtroAtivo = painelBI.filtros.find(f => f.campo === v.dimensao);
-    
-    // Mapa de cores para status e andamento
-    const MAPA_CORES_STATUS = {
-        'não iniciado': '#334155',
-        'em andamento': '#f59e0b',
-        'em progresso': '#f59e0b',
-        'aguardando recepção': '#8b5cf6',
-        'recepção aprovada': '#10b981',
-        'aprovada': '#10b981',
-        'verde': '#10b981',
-        'recepção rejeitada': '#ef4444',
-        'rejeitada': '#ef4444',
-        'vermelha': '#ef4444',
-        'dark': '#334155',
-        'yellow': '#f59e0b',
-        'purple': '#8b5cf6',
-        'green': '#10b981',
-        'red': '#ef4444'
-    };
-
-    const corDe = (i) => {
-        const labelText = labels[i].trim().toLowerCase();
-        let base;
-        
-        if (MAPA_CORES_STATUS[labelText]) {
-            base = MAPA_CORES_STATUS[labelText];
-        } else {
-            base = circular ? PALETA_BI[i % PALETA_BI.length] : PALETA_BI[0];
-        }
-        
-        if (!filtroAtivo) return base;
-        return labels[i] === filtroAtivo.valor ? base : 'rgba(148,163,184,0.25)';
-    };
-
-    v.chart = new Chart(canvas, {
-        type: (v.tipo === 'barra-h') ? 'bar' : v.tipo,
+    chartProgressoLinha = new Chart(ctx, {
+        type: 'bar',
         data: {
-            labels,
-            datasets: [{
-                label: rotuloDeColuna(v.metrica, v.fonte),
-                data: valores,
-                backgroundColor: v.tipo === 'line'
-                    ? 'rgba(139, 92, 246, 0.15)'
-                    : labels.map((_, i) => corDe(i)),
-                borderColor: circular ? 'transparent' : PALETA_BI[0],
-                borderWidth: circular ? 0 : 2,
-                fill: v.tipo === 'line',
-                tension: 0.3,
-                borderRadius: circular ? 0 : 4
-            }]
+            labels: linhas.map(l => 'Linha ' + l),
+            datasets: [
+                {
+                    label: 'Concluído',
+                    data: concluidasPorLinha,
+                    backgroundColor: 'rgba(34, 197, 94, 0.8)', // Verde
+                    borderRadius: 4
+                },
+                {
+                    label: 'Em Recepção / Andamento',
+                    data: andamentoPorLinha,
+                    backgroundColor: 'rgba(192, 132, 252, 0.8)', // Roxo
+                    borderRadius: 4
+                },
+                {
+                    label: 'Negados',
+                    data: negadasPorLinha,
+                    backgroundColor: 'rgba(239, 68, 68, 0.8)', // Vermelho
+                    borderRadius: 4
+                }
+            ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            indexAxis: (v.tipo === 'barra-h') ? 'y' : 'x',
-            onClick: (evt, elementos) => {
-                if (!elementos || elementos.length === 0) return;
-                alternarFiltro(v.dimensao, labels[elementos[0].index]);
-            },
-            onHover: (evt, elementos) => {
-                if (evt && evt.native && evt.native.target) {
-                    evt.native.target.style.cursor = elementos.length ? 'pointer' : 'default';
-                }
+            scales: {
+                x: { stacked: true, grid: { display: false }, ticks: { color: corTexto, font: {size: 10} } },
+                y: { stacked: true, grid: { color: corGrade }, ticks: { color: corTexto, font: {size: 10} } }
             },
             plugins: {
                 legend: {
-                    display: circular,
-                    position: 'right',
-                    labels: { color: corTexto, boxWidth: 10, padding: 8, font: { size: 11 } }
+                    position: 'top',
+                    labels: { color: corTexto, boxWidth: 10, font: {size: 11} }
                 }
-            },
-            scales: circular ? {} : {
-                x: { ticks: { color: corTexto, font: { size: 10 } }, grid: { color: corGrade } },
-                y: { beginAtZero: true, ticks: { color: corTexto, font: { size: 10 } }, grid: { color: corGrade } }
             }
         }
     });
 }
 
-function avisoVisual(v, texto) {
-    const aviso  = document.getElementById(`bi-aviso-${v.id}`);
-    const canvas = document.getElementById(`bi-canvas-${v.id}`);
-    if (aviso)  { aviso.textContent = texto; aviso.style.display = 'flex'; }
-    if (canvas) canvas.style.display = 'none';
-    if (v.chart) { v.chart.destroy(); v.chart = null; }
+function renderizarRankingMantenedores(maquinas) {
+    const counts = {};
+    maquinas.forEach(m => {
+        if (m.mantenedor && m.mantenedor !== 'Não Atribuído') {
+            counts[m.mantenedor] = (counts[m.mantenedor] || 0) + 1;
+        }
+    });
+
+    const ranking = Object.keys(counts).map(k => ({ nome: k, inst: counts[k] }));
+    ranking.sort((a, b) => b.inst - a.inst);
+
+    const container = document.getElementById('bi-ranking-list');
+    if (!container) return;
+
+    if (ranking.length === 0) {
+        container.innerHTML = '<p style="color:var(--text-muted); font-size:12px;">Nenhum mantenedor atribuído.</p>';
+        return;
+    }
+
+    const top5 = ranking.slice(0, 5);
+    const maxInst = top5[0].inst || 1;
+
+    let html = '';
+    const cores = ['var(--status-green)', 'var(--status-yellow)', 'var(--text-muted)', 'var(--text-muted)', 'var(--text-muted)'];
+
+    top5.forEach((r, i) => {
+        const pct = (r.inst / maxInst) * 100;
+        const cor = cores[i] || cores[cores.length-1];
+        const destaque = i < 2 ? cor : 'var(--text-main)';
+        
+        html += `
+        <div class="bi-ranking-item">
+            <div class="bi-ranking-info">
+                <span>${escapar(r.nome)}</span>
+                <span style="color: ${destaque};">${r.inst} inst.</span>
+            </div>
+            <div class="bi-ranking-bar">
+                <div class="fill" style="width: ${pct}%; background-color: ${cor};"></div>
+            </div>
+        </div>`;
+    });
+
+    container.innerHTML = html;
 }
 
-function esconderAvisoVisual(v) {
-    const aviso  = document.getElementById(`bi-aviso-${v.id}`);
-    const canvas = document.getElementById(`bi-canvas-${v.id}`);
-    if (aviso)  aviso.style.display = 'none';
-    if (canvas) canvas.style.display = 'block';
-}
+async function renderizarPerformanceSemanal(isDiaEspecifico = false) {
+    const mesInput = document.getElementById('bi-input-mes');
+    const diaInput = document.getElementById('bi-input-dia');
+    if (!mesInput || !diaInput) return;
+    
+    let mesVal = mesInput.value;
+    let diaVal = diaInput.value;
 
+    if (!mesVal && !diaVal) {
+        const now = new Date();
+        mesVal = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+        mesInput.value = mesVal;
+    }
 
-/* =========================================================================
- * Utilitários
- * ====================================================================== */
+    const { data: plantaData } = await supabaseClient
+        .from('vw_bi_planta')
+        .select('*');
+    const maquinas = plantaData || [];
 
-function rotuloDeColuna(coluna, fonte) {
-    const c = catalogoBI.find(x => x.coluna === coluna && (!fonte || x.fonte === fonte))
-           || catalogoBI.find(x => x.coluna === coluna);
-    return c ? c.coluna_rotulo : coluna;
+    let groupsData = [];
+
+    if (isDiaEspecifico && diaVal) {
+        // Limpa o input de mês para não confundir
+        mesInput.value = '';
+        const d = new Date(diaVal + 'T12:00:00');
+        const diaLabel = d.toLocaleDateString('pt-BR');
+        
+        groupsData.push({
+            name: ['Dia Específico', `${diaLabel}`],
+            start: new Date(diaVal + 'T00:00:00').getTime(),
+            end: new Date(diaVal + 'T23:59:59').getTime(),
+            verdes: 0, roxas: 0, vermelhas: 0
+        });
+    } else {
+        // Se isDiaEspecifico foi chamado mas limpou o campo, reseta pro mês
+        if (isDiaEspecifico) {
+            diaInput.value = '';
+            const now = new Date();
+            mesVal = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+            mesInput.value = mesVal;
+        } else {
+            diaInput.value = ''; // Limpa o dia caso tenha alterado o mês
+        }
+
+        const [year, month] = mesVal.split('-').map(Number);
+        let currentDate = new Date(year, month - 1, 1);
+        let currentWeekNum = 1;
+
+        while (currentDate.getMonth() === month - 1) {
+            while ((currentDate.getDay() === 0 || currentDate.getDay() === 6) && currentDate.getMonth() === month - 1) {
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+            if (currentDate.getMonth() !== month - 1) break;
+
+            let startOfWeek = new Date(currentDate);
+            while (currentDate.getDay() !== 5 && currentDate.getMonth() === month - 1) {
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+            if (currentDate.getMonth() !== month - 1) currentDate.setDate(0); 
+
+            let endOfWeek = new Date(currentDate);
+            endOfWeek.setHours(23, 59, 59, 999);
+            startOfWeek.setHours(0, 0, 0, 0);
+
+            const startStr = startOfWeek.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'});
+            const endStr = endOfWeek.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'});
+
+            groupsData.push({
+                name: ['Semana ' + currentWeekNum, `${startStr} a ${endStr}`],
+                start: startOfWeek.getTime(),
+                end: endOfWeek.getTime(),
+                verdes: 0,
+                roxas: 0,
+                vermelhas: 0
+            });
+
+            currentDate.setDate(currentDate.getDate() + 1);
+            currentWeekNum++;
+        }
+    }
+
+    if (maquinas.length > 0) {
+        maquinas.forEach(m => {
+            if(m.data_fim) {
+                const time = new Date(m.data_fim).getTime();
+                let groupFound = groupsData.findIndex(w => time >= w.start && time <= w.end);
+                
+                if (groupFound !== -1) {
+                    if (m.status === 'green') groupsData[groupFound].verdes++;
+                    else if (m.status === 'purple') groupsData[groupFound].roxas++;
+                    else if (m.status === 'red') groupsData[groupFound].vermelhas++;
+                }
+            }
+        });
+    }
+
+    const datasets = [
+        {
+            label: 'Concluído',
+            data: groupsData.map(w => w.verdes),
+            backgroundColor: 'rgba(34, 197, 94, 0.8)', // Verde
+            borderRadius: 4,
+            maxBarThickness: 45 // Barra mais grossa
+        },
+        {
+            label: 'Em Recepção',
+            data: groupsData.map(w => w.roxas),
+            backgroundColor: 'rgba(192, 132, 252, 0.8)', // Roxo
+            borderRadius: 4,
+            maxBarThickness: 45
+        },
+        {
+            label: 'Negados',
+            data: groupsData.map(w => w.vermelhas),
+            backgroundColor: 'rgba(239, 68, 68, 0.8)', // Vermelho
+            borderRadius: 4,
+            maxBarThickness: 45
+        }
+    ];
+
+    const ctx = document.getElementById('barChartSemanas');
+    if (!ctx) return;
+
+    if (chartPerformanceSemanas) chartPerformanceSemanas.destroy();
+
+    const corTexto = getComputedStyle(document.body).getPropertyValue('--text-muted').trim() || '#94a3b8';
+    const corGrade = 'rgba(148, 163, 184, 0.15)';
+
+    chartPerformanceSemanas = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: groupsData.map(w => w.name),
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { stacked: true, grid: { display: false }, ticks: { color: corTexto, font: {size: 11} } },
+                y: { stacked: true, grid: { color: corGrade }, ticks: { color: corTexto, font: {size: 10} } }
+            },
+            plugins: {
+                legend: { position: 'top', labels: { color: corTexto, boxWidth: 10, font: {size: 11} } }
+            }
+        }
+    });
 }
 
 function escapar(texto) {
@@ -488,44 +320,188 @@ function escapar(texto) {
     }[ch]));
 }
 
-
-/* =========================================================================
- * View da tela
- * ====================================================================== */
-
 views.relatorios = `
-<div class="relatorios-wrapper">
-
-    <div class="card bi-barra-topo">
-        <div class="bi-barra-controles">
-            <div class="bi-campo-inline">
-                <label for="bi-periodo">Período</label>
-                <select id="bi-periodo" onchange="mudarPeriodo()">
-                    <option value="7">7 dias</option>
-                    <option value="30" selected>30 dias</option>
-                    <option value="90">90 dias</option>
-                    <option value="3650">Tudo</option>
-                </select>
+    <div class="bi-dashboard-grid">
+        <!-- Top Row -->
+        <div class="bi-top-row">
+            <!-- PROGRESSO TOTAL -->
+            <div class="card bi-card">
+                <div class="bi-card-header">
+                    <h3>PROGRESSO TOTAL</h3>
+                    <div class="icon-circle">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                    </div>
+                </div>
+                <div class="bi-stat-main" id="bi-val-progresso">0%</div>
+                <div class="bi-progress-bar-container">
+                    <div class="bi-progress-fill" id="bi-bar-progresso" style="width: 0%;"></div>
+                </div>
+                <div class="bi-card-footer">
+                    <span>Métricas baseadas na planta inteira</span>
+                </div>
             </div>
 
-            <div class="bi-campo-inline">
-                <label for="bi-filtro-campo">Filtro</label>
-                <select id="bi-filtro-campo" onchange="carregarValoresFiltro()"></select>
+            <!-- CONCLUÍDO -->
+            <div class="card bi-card">
+                <div class="bi-card-header">
+                    <h3>CONCLUÍDO</h3>
+                    <div class="icon-circle">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--status-yellow)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                    </div>
+                </div>
+                <div class="bi-stat-main" id="bi-val-concluido">0</div>
+                <div class="bi-sparkline" style="display: flex; align-items: center; padding-top: 10px;">
+                    <input type="range" id="bi-range-meta" min="1" max="500" value="${metaGlobal}" oninput="document.getElementById('bi-input-meta').value=this.value; atualizarMeta(this.value)" style="width: 100%; accent-color: var(--status-yellow); cursor: pointer; margin: 0;">
+                </div>
+                <div class="bi-card-footer justify-end">
+                    <span>Meta: <input type="text" inputmode="numeric" id="bi-input-meta" onchange="atualizarMeta(this.value)" oninput="document.getElementById('bi-range-meta').value=this.value" value="${metaGlobal}" style="width: 40px; background: transparent; border: none; border-bottom: 1px solid var(--border-color); color: var(--text-main); padding: 0px 2px; font-size: 13px; font-weight: bold; outline: none; margin-left: 4px; text-align: center;"></span>
+                </div>
             </div>
 
-            <div class="bi-campo-inline">
-                <label for="bi-filtro-valor">Valor</label>
-                <select id="bi-filtro-valor" disabled onchange="aplicarFiltroManual()">
-                    <option value="">—</option>
-                </select>
+            <!-- EM ANDAMENTO -->
+            <div class="card bi-card">
+                <div class="bi-card-header">
+                    <h3>EM ANDAMENTO</h3>
+                    <div class="icon-circle">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--status-yellow)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                    </div>
+                </div>
+                <div class="bi-stat-main" id="bi-val-andamento">0</div>
+                <div class="bi-badges">
+                    <span class="badge dark">Verificações pendentes</span>
+                </div>
+                <div class="bi-card-footer justify-end">
+                    <span>Acompanhamento em tempo real</span>
+                </div>
             </div>
-
-            <button class="btn-modern bi-btn-add" onclick="adicionarVisual()">+ Visual</button>
         </div>
 
-        <div class="bi-chips" id="bi-chips"></div>
-    </div>
+        <!-- Middle Row -->
+        <div class="bi-middle-row">
+            <!-- Progresso por Linha -->
+            <div class="card bi-card" style="flex: 2;">
+                <div class="bi-card-header">
+                    <h3 style="font-size: 16px; text-transform: none; color: var(--text-light);">Progresso por Linha</h3>
+                    <div class="bi-toggle-btns">
+                        <button class="active">Vol</button>
+                    </div>
+                </div>
+                <div class="bi-chart-container">
+                    <canvas id="barChartLinhas"></canvas>
+                </div>
+            </div>
 
-    <div class="bi-grade" id="bi-grade"></div>
+            <!-- Ranking de Mantenedores -->
+            <div class="card bi-card" style="flex: 1;">
+                <div class="bi-card-header">
+                    <h3 style="font-size: 16px; text-transform: none; color: var(--text-light);">Ranking de Mantenedores</h3>
+                    <div class="icon-circle">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--status-yellow)" stroke-width="2"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10"/><path d="M17 4v8a5 5 0 0 1-10 0V4"/></svg>
+                    </div>
+                </div>
+                <div class="bi-ranking-list" id="bi-ranking-list">
+                    <!-- Dinâmico -->
+                </div>
+                <button class="btn-cancelar" style="width: 100%; margin-top: 25px;" onclick="navigateTo('rankingMantenedores')">Ver Lista Completa</button>
+            </div>
+        </div>
 
-</div>`;
+        <!-- Bottom Row -->
+        <div class="bi-bottom-row">
+            <div class="card bi-card" style="width: 100%;">
+                <div class="bi-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <h3 style="font-size: 16px; text-transform: none; color: var(--text-light);">Performance Semanal da Produção</h3>
+                    <div style="display: flex; gap: 10px; position: relative;">
+                        <input type="month" id="bi-input-mes" title="Filtrar por Mês" onchange="renderizarPerformanceSemanal()" style="background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; padding: 4px 8px; font-size: 13px; outline: none; cursor: pointer;">
+                        
+                        <button onclick="document.getElementById('bi-input-dia').showPicker()" title="Ver dia exato" style="background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 4px; padding: 4px 8px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        </button>
+                        <input type="date" id="bi-input-dia" onchange="renderizarPerformanceSemanal(true)" style="position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; right: 0; top: 0;">
+                    </div>
+                </div>
+                <div class="bi-chart-container" style="height: 200px;">
+                    <canvas id="barChartSemanas"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>`;
+
+async function renderizarRankingCompleto() {
+    const tbody = document.getElementById('tabela-ranking-body');
+    if (!tbody) return;
+
+    // Estado de carregamento
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">Carregando ranking...</td></tr>';
+
+    // Busca os dados das máquinas e os usuários para puxar a matrícula
+    const { data: plantaData } = await supabaseClient.from('vw_bi_planta').select('*');
+    const { data: usuariosData } = await supabaseClient.from('usuarios').select('nome_completo, matricula');
+
+    const maquinas = plantaData || [];
+    const usuarios = usuariosData || [];
+    
+    // Mapeia nome_completo -> matrícula
+    const mapMatriculas = {};
+    usuarios.forEach(u => {
+        if(u.nome_completo && u.matricula) mapMatriculas[u.nome_completo.trim()] = u.matricula;
+    });
+
+    const contagem = {};
+    maquinas.forEach(m => {
+        const nome = m.mantenedor; 
+        if (nome && nome !== '-' && nome !== '' && nome !== 'Não Atribuído') {
+            if (!contagem[nome]) {
+                contagem[nome] = { verdes: 0, roxas: 0, vermelhas: 0 };
+            }
+            if (m.status === 'green') contagem[nome].verdes++;
+            if (m.status === 'purple') contagem[nome].roxas++;
+            if (m.status === 'red') contagem[nome].vermelhas++;
+        }
+    });
+
+    // Ordena por sucesso (verdes)
+    const ranking = Object.keys(contagem)
+        .map(nome => ({ nome, verdes: contagem[nome].verdes, roxas: contagem[nome].roxas, vermelhas: contagem[nome].vermelhas }))
+        .filter(item => item.verdes > 0 || item.roxas > 0 || item.vermelhas > 0)
+        .sort((a, b) => b.verdes - a.verdes);
+
+    if (ranking.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--text-muted);">Nenhum dado encontrado para gerar o ranking.</td></tr>';
+        return;
+    }
+
+    // A meta global é usada para calcular a Eficiência
+    let meta = parseInt(localStorage.getItem('bi_meta')) || 120;
+
+    let html = '';
+    ranking.forEach((item, index) => {
+        let matricula = mapMatriculas[item.nome.trim()] || '-';
+        let taxaEficiencia = meta > 0 ? Math.round((item.verdes / meta) * 100) : 0;
+        
+        let posCor = 'var(--text-main)';
+        if (index === 0) posCor = 'var(--status-green)';
+        else if (index === 1) posCor = 'var(--status-yellow)';
+        else if (index === 2) posCor = '#f97316'; // Laranja
+
+        html += `
+            <tr style="border-bottom: 1px solid var(--border-color);">
+                <td style="text-align: center; font-weight: bold; font-size: 14px; color: ${posCor};">#${index + 1}</td>
+                <td style="color: var(--text-light); font-weight: 500;">${escapeHtml(item.nome)}</td>
+                <td><span class="badge dark">${escapeHtml(matricula)}</span></td>
+                <td style="text-align: center; color: var(--status-green); font-weight: bold;">${item.verdes}</td>
+                <td style="text-align: center; color: var(--status-red); font-weight: bold;">${item.vermelhas}</td>
+                <td style="text-align: center;">
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                        <span style="font-size: 12px; font-weight: bold; color: var(--text-light);">${taxaEficiencia}%</span>
+                        <div style="width: 60px; height: 6px; background: var(--input-bg); border-radius: 3px; overflow: hidden;">
+                            <div style="width: ${Math.min(taxaEficiencia, 100)}%; height: 100%; background: ${taxaEficiencia >= 100 ? 'var(--status-green)' : 'var(--accent-blue)'}; border-radius: 3px;"></div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = html;
+}
