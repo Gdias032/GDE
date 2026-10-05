@@ -37,8 +37,8 @@ function navigateTo(viewName, parametro = null) {
         return;
     }
 
-    // Perfil "mantenedor" só pode acessar planta, recepção e solicitações
-    if (perfilAtual === 'mantenedor' && viewName !== 'planta' && viewName !== 'recepcao' && viewName !== 'solicitacoes') {
+    // Perfil "mantenedor" só pode acessar planta, recepção, solicitações e estatisticasFuncionario
+    if (perfilAtual === 'mantenedor' && viewName !== 'planta' && viewName !== 'recepcao' && viewName !== 'solicitacoes' && viewName !== 'estatisticasFuncionario') {
         viewName = 'planta';
     }
 
@@ -65,5 +65,7 @@ function navigateTo(viewName, parametro = null) {
         renderizarRelatorios();
     } else if (viewName === 'rankingMantenedores') {
         renderizarRankingCompleto();
+    } else if (viewName === 'estatisticasFuncionario') {
+        renderizarEstatisticasFuncionario();
     }
 }

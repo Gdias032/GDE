@@ -96,6 +96,10 @@ function abrirModalPerfil() {
             <div><span>Nível de Acesso</span><strong>${escapeHtml(nivelAcesso)}</strong></div>
         </div>
         <p style="font-size: 11px; color: var(--text-muted); margin-top: 14px; line-height: 1.4;">Apenas a foto de perfil pode ser alterada por aqui. Para outras alterações de cadastro, contate o Administrador.</p>
+        ${perfilAtual === 'mantenedor' || perfilAtual === 'recepcionista' || perfilAtual === 'admin' ? `
+        <button class="btn-modern btn-purple" style="width: 100%; margin-top: 15px; justify-content: center;" onclick="fecharModalPerfil(); navigateTo('estatisticasFuncionario');">
+            Ver Minhas Estatísticas
+        </button>` : ''}
     </div>`;
     modal.style.display = 'flex';
 }
@@ -172,3 +176,98 @@ async function removerFotoPerfil() {
 }
 
 // Removido salvarStorageSeguroBruto e localStorage.
+
+async function renderizarEstatisticasFuncionario() {
+    if (!usuarioLogadoSessao) return;
+
+    let meta = parseInt(localStorage.getItem('bi_meta_individual')) || 30;
+    const elMeta = document.getElementById('estatisticas-meta-individual');
+    if (elMeta) elMeta.textContent = meta;
+
+    const tbody = document.getElementById('tabela-estatisticas-recentes');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px;"><div class="skeleton" style="width: 100%; height: 20px;"></div></td></tr>';
+
+    try {
+        // Fetch all the machines from cache or DB using fetchPlantaData if possible, or directly from Supabase
+        let maquinas = [];
+        if (typeof fetchPlantaData === 'function') {
+            maquinas = await fetchPlantaData();
+        } else {
+            const { data, error } = await supabaseClient.from('recepcoes').select('*').order('data_hora_termino', { ascending: false });
+            if (error) throw error;
+            maquinas = data || [];
+        }
+
+        // Filtra as máquinas do funcionário logado e apenas status green ou red
+        let maquinasFuncionario = [];
+        const labelConcluidas = document.getElementById('estatisticas-label-concluidas');
+
+        if (usuarioLogadoSessao.perfil === 'recepcionista') {
+            maquinasFuncionario = maquinas.filter(m => m.recepcionista && m.recepcionista.trim() === usuarioLogadoSessao.nome.trim() && (m.status === 'green' || m.status === 'red'));
+            if (labelConcluidas) labelConcluidas.textContent = 'Máquinas Recepcionadas';
+        } else {
+            maquinasFuncionario = maquinas.filter(m => m.mantenedor && m.mantenedor.trim() === usuarioLogadoSessao.nome.trim() && (m.status === 'green' || m.status === 'red'));
+            if (labelConcluidas) labelConcluidas.textContent = 'Máquinas Concluídas';
+        }
+
+
+        const concluidas = maquinasFuncionario.filter(m => m.status === 'green').length;
+        const elConcluidas = document.getElementById('estatisticas-concluidas');
+        if (elConcluidas) elConcluidas.textContent = concluidas;
+
+        const diffContainer = document.getElementById('estatisticas-diff-container');
+        if (diffContainer) {
+            const diff = concluidas - meta;
+            diffContainer.textContent = diff >= 0 ? `+${diff}` : diff;
+            diffContainer.style.color = diff >= 0 ? 'var(--status-green)' : 'var(--status-red)';
+        }
+
+        let taxaEficiencia = meta > 0 ? Math.round((concluidas / meta) * 100) : 0;
+        const elTaxa = document.getElementById('estatisticas-taxa');
+        if (elTaxa) elTaxa.textContent = taxaEficiencia + '%';
+        
+        const barraTaxa = document.getElementById('estatisticas-barra-taxa');
+        if (barraTaxa) {
+            barraTaxa.style.width = Math.min(taxaEficiencia, 100) + '%';
+            barraTaxa.style.background = taxaEficiencia >= 100 ? 'var(--status-green)' : 'var(--accent-blue)';
+        }
+
+        if (tbody) {
+            // Sort to show most recent first
+            maquinasFuncionario.sort((a, b) => new Date(b.data_fim || b.data_inicio) - new Date(a.data_fim || a.data_inicio));
+            
+            if (maquinasFuncionario.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--text-muted);">Nenhum histórico concluído encontrado.</td></tr>';
+            } else {
+                let html = '';
+                // Limitar a 50 mais recentes para não pesar
+                maquinasFuncionario.slice(0, 50).forEach(m => {
+                    let statusLabel = m.status === 'green' ? '<span class="badge" style="background:var(--status-green);color:#fff;">Aprovada</span>' :
+                                      m.status === 'red' ? '<span class="badge" style="background:var(--status-red);color:#fff;">Rejeitada</span>' :
+                                      (m.status === 'yellow' || m.status === 'purple') ? '<span class="badge" style="background:var(--status-yellow);color:#000;">Em Progresso</span>' :
+                                      '<span class="badge dark">Outro</span>';
+                    
+                    let dataInicio = m.data_inicio ? new Date(m.data_inicio).toLocaleString('pt-BR') : '-';
+                    let dataFim = m.data_fim ? new Date(m.data_fim).toLocaleString('pt-BR') : '-';
+
+                    let maquinaIdRaw = m.id || m.id_maquina || m.maquina || m.maquina_id || '';
+                    let numeroMaquina = maquinaIdRaw.replace(/\D/g, ''); // Extract only numbers
+                    if (!numeroMaquina) numeroMaquina = '-';
+
+                    let linha = m.linha || (maquinaIdRaw.charAt(0).toUpperCase() || '-');
+
+                    html += `<tr>
+                        <td style="font-weight: bold; color: var(--text-light);">Máquina ${escapeHtml(linha)}${escapeHtml(numeroMaquina)}</td>
+                        <td>${statusLabel}</td>
+                        <td style="font-size: 12px; color: var(--text-muted);">${dataInicio}</td>
+                        <td style="font-size: 12px; color: var(--text-muted);">${dataFim}</td>
+                    </tr>`;
+                });
+                tbody.innerHTML = html;
+            }
+        }
+    } catch (e) {
+        console.error('Erro ao carregar estatísticas:', e);
+        if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--status-red);">Erro ao carregar os dados.</td></tr>';
+    }
+}

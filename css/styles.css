@@ -166,6 +166,8 @@ body {
 .layout {
   display: flex;
   width: 100%;
+  max-width: 1920px;
+  margin: 0 auto;
 }
 
 .main-wrapper {
@@ -1910,5 +1912,3 @@ input:checked+.slider:before {
   .bi-campo-inline { flex: 1 1 140px; }
   .bi-visual-config { grid-template-columns: 1fr; }
 }
- 
- 

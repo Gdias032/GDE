@@ -203,5 +203,56 @@ const views = {
                 </tbody>
             </table>
         </div>
+    </div>`,
+
+    estatisticasFuncionario: `
+    <div class="recepcao-container">
+        <div class="breadcrumb"><span> / Meu Perfil /</span> Minhas Estatísticas</div>
+        <div class="recepcao-header" style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+            <h2>Estatísticas e Produtividade Pessoal</h2>
+        </div>
+        <div class="card" style="margin-top: 15px; padding: 20px;">
+            <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px;">
+                <div class="bi-card" style="flex: 1; min-width: 200px;">
+                    <div class="bi-card-header">
+                        <h3 style="font-size: 14px; text-transform: none; color: var(--text-light);">Meta Individual Mensal</h3>
+                        <div class="icon-circle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--status-yellow)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></div>
+                    </div>
+                    <div class="bi-stat-main" id="estatisticas-meta-individual">0</div>
+                </div>
+                <div class="bi-card" style="flex: 1; min-width: 200px;">
+                    <div class="bi-card-header">
+                        <h3 id="estatisticas-label-concluidas" style="font-size: 14px; text-transform: none; color: var(--text-light);">Máquinas Concluídas</h3>
+                        <div class="icon-circle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--status-green)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></div>
+                    </div>
+                    <div class="bi-stat-main" id="estatisticas-concluidas">0</div>
+                    <div id="estatisticas-diff-container" style="font-size: 14px; font-weight: bold; margin-top: 8px;"></div>
+                </div>
+                <div class="bi-card" style="flex: 1; min-width: 200px;">
+                    <div class="bi-card-header">
+                        <h3 style="font-size: 14px; text-transform: none; color: var(--text-light);">Taxa de Eficiência</h3>
+                        <div class="icon-circle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+                    </div>
+                    <div class="bi-stat-main" id="estatisticas-taxa">0%</div>
+                    <div style="width: 100%; height: 8px; background: var(--input-bg); border-radius: 4px; overflow: hidden; margin-top: 10px;">
+                        <div id="estatisticas-barra-taxa" style="width: 0%; height: 100%; background: var(--accent-blue); border-radius: 4px; transition: width 0.5s;"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <h3 style="font-size: 16px; margin-bottom: 12px; color: var(--text-light);">Histórico de Máquinas</h3>
+            <div class="card" style="padding: 0; overflow-y: auto; overflow-x: auto; max-height: 400px;">
+                <table class="tabela-recepcoes">
+                    <thead style="position: sticky; top: 0; z-index: 10;">
+                        <tr>
+                            <th>Máquina</th><th>Status</th><th>Início</th><th>Término</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela-estatisticas-recentes">
+                        <tr><td colspan="4" style="text-align: center; padding: 20px;">Carregando histórico...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>`
 };

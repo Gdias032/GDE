@@ -9,6 +9,7 @@ let chartProgressoLinha = null;
 let chartPerformanceSemanas = null;
 let metaMensal = parseInt(localStorage.getItem('bi_meta_mensal')) || 120;
 let metaAnual = parseInt(localStorage.getItem('bi_meta_anual')) || 1440;
+let metaIndividual = parseInt(localStorage.getItem('bi_meta_individual')) || 30;
 
 // -- Caching Layer --
 let biCache = null;
@@ -76,6 +77,12 @@ async function atualizarMetaAnual(valor) {
     renderizarRelatorios(); // re-renderiza para atualizar os cálculos
 }
 
+async function atualizarMetaIndividual(valor) {
+    metaIndividual = parseInt(valor) || 30;
+    localStorage.setItem('bi_meta_individual', metaIndividual);
+    renderizarRelatorios(); // re-renderiza para atualizar os cálculos
+}
+
 async function renderizarRelatorios() {
     // Mostrar loader skeleton na UI
     mostrarSkeletonBI();
@@ -100,13 +107,24 @@ async function renderizarRelatorios() {
         
         const inputMetaMensal = document.getElementById('bi-input-meta-mensal');
         if (inputMetaMensal) inputMetaMensal.value = metaMensal;
-        const rangeMetaMensal = document.getElementById('bi-range-meta-mensal');
-        if (rangeMetaMensal) rangeMetaMensal.value = metaMensal;
+        const spanDiffMensal = document.getElementById('bi-diff-mensal');
+        if (spanDiffMensal) {
+            const diffMensal = concluidas - metaMensal;
+            spanDiffMensal.textContent = diffMensal >= 0 ? `+${diffMensal}` : diffMensal;
+            spanDiffMensal.style.color = diffMensal >= 0 ? 'var(--status-green)' : 'var(--status-red)';
+        }
 
         const inputMetaAnual = document.getElementById('bi-input-meta-anual');
         if (inputMetaAnual) inputMetaAnual.value = metaAnual;
-        const rangeMetaAnual = document.getElementById('bi-range-meta-anual');
-        if (rangeMetaAnual) rangeMetaAnual.value = metaAnual;
+        const spanDiffAnual = document.getElementById('bi-diff-anual');
+        if (spanDiffAnual) {
+            const diffAnual = concluidas - metaAnual;
+            spanDiffAnual.textContent = diffAnual >= 0 ? `+${diffAnual}` : diffAnual;
+            spanDiffAnual.style.color = diffAnual >= 0 ? 'var(--status-green)' : 'var(--status-red)';
+        }
+
+        const inputMetaIndividual = document.getElementById('bi-input-meta-individual');
+        if (inputMetaIndividual) inputMetaIndividual.value = metaIndividual;
 
         // Progresso por Linha
         renderizarProgressoPorLinha(maquinas);
@@ -442,15 +460,25 @@ views.relatorios = `
                 </div>
                 <div class="bi-stat-main" id="bi-val-concluido">0</div>
                 <div class="bi-sparkline" style="display: flex; flex-direction: column; gap: 4px; padding-top: 0;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 11px; color: var(--text-muted); width: 75px;">Meta Mensal</span>
-                        <input type="range" id="bi-range-meta-mensal" min="1" max="500" value="${metaMensal}" oninput="document.getElementById('bi-input-meta-mensal').value=this.value; atualizarMetaMensal(this.value)" style="flex: 1; accent-color: var(--status-yellow); cursor: pointer; margin: 0;">
-                        <input type="text" inputmode="numeric" id="bi-input-meta-mensal" onchange="atualizarMetaMensal(this.value)" oninput="document.getElementById('bi-range-meta-mensal').value=this.value" value="${metaMensal}" style="width: 40px; background: transparent; border: none; border-bottom: 1px solid var(--border-color); color: var(--text-main); padding: 0px 2px; font-size: 12px; font-weight: bold; outline: none; text-align: center;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 11px; color: var(--text-muted); width: 75px;">Meta Mensal</span>
+                            <input type="text" inputmode="numeric" id="bi-input-meta-mensal" onchange="atualizarMetaMensal(this.value)" value="${metaMensal}" style="width: 40px; background: transparent; border: none; border-bottom: 1px solid var(--border-color); color: var(--text-main); padding: 0px 2px; font-size: 12px; font-weight: bold; outline: none; text-align: center;">
+                        </div>
+                        <span id="bi-diff-mensal" style="font-size: 12px; font-weight: bold;"></span>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 11px; color: var(--text-muted); width: 75px;">Meta Anual</span>
-                        <input type="range" id="bi-range-meta-anual" min="1" max="6000" value="${metaAnual}" oninput="document.getElementById('bi-input-meta-anual').value=this.value; atualizarMetaAnual(this.value)" style="flex: 1; accent-color: var(--status-green); cursor: pointer; margin: 0;">
-                        <input type="text" inputmode="numeric" id="bi-input-meta-anual" onchange="atualizarMetaAnual(this.value)" oninput="document.getElementById('bi-range-meta-anual').value=this.value" value="${metaAnual}" style="width: 40px; background: transparent; border: none; border-bottom: 1px solid var(--border-color); color: var(--text-main); padding: 0px 2px; font-size: 12px; font-weight: bold; outline: none; text-align: center;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 11px; color: var(--text-muted); width: 75px;">Meta Anual</span>
+                            <input type="text" inputmode="numeric" id="bi-input-meta-anual" onchange="atualizarMetaAnual(this.value)" value="${metaAnual}" style="width: 40px; background: transparent; border: none; border-bottom: 1px solid var(--border-color); color: var(--text-main); padding: 0px 2px; font-size: 12px; font-weight: bold; outline: none; text-align: center;">
+                        </div>
+                        <span id="bi-diff-anual" style="font-size: 12px; font-weight: bold;"></span>
+                    </div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 11px; color: var(--text-muted); width: 75px;">Meta Indiv.</span>
+                            <input type="text" inputmode="numeric" id="bi-input-meta-individual" onchange="atualizarMetaIndividual(this.value)" value="${metaIndividual}" style="width: 40px; background: transparent; border: none; border-bottom: 1px solid var(--border-color); color: var(--text-main); padding: 0px 2px; font-size: 12px; font-weight: bold; outline: none; text-align: center;">
+                        </div>
                     </div>
                 </div>
             </div>
@@ -570,8 +598,8 @@ async function renderizarRankingCompleto() {
         return;
     }
 
-    // A meta mensal é usada para calcular a Eficiência
-    let meta = parseInt(localStorage.getItem('bi_meta_mensal')) || 120;
+    // A meta mensal é usada para calcular a Eficiência (agora a meta individual)
+    let meta = parseInt(localStorage.getItem('bi_meta_individual')) || 30;
 
     let html = '';
     ranking.forEach((item, index) => {
