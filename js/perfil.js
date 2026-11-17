@@ -96,10 +96,13 @@ function abrirModalPerfil() {
             <div><span>Nível de Acesso</span><strong>${escapeHtml(nivelAcesso)}</strong></div>
         </div>
         <p style="font-size: 11px; color: var(--text-muted); margin-top: 14px; line-height: 1.4;">Apenas a foto de perfil pode ser alterada por aqui. Para outras alterações de cadastro, contate o Administrador.</p>
-        ${perfilAtual === 'mantenedor' || perfilAtual === 'recepcionista' || perfilAtual === 'admin' ? `
+        ${perfilAtual === 'admin' ? `
+        <button class="btn-modern btn-purple" style="width: 100%; margin-top: 15px; justify-content: center;" onclick="fecharModalPerfil(); navigateTo('rankingMantenedores');">
+            Ver Ranking de Mantenedores
+        </button>` : (perfilAtual === 'mantenedor' || perfilAtual === 'recepcionista' ? `
         <button class="btn-modern btn-purple" style="width: 100%; margin-top: 15px; justify-content: center;" onclick="fecharModalPerfil(); navigateTo('estatisticasFuncionario');">
             Ver Minhas Estatísticas
-        </button>` : ''}
+        </button>` : '')}
     </div>`;
     modal.style.display = 'flex';
 }
@@ -180,7 +183,7 @@ async function removerFotoPerfil() {
 async function renderizarEstatisticasFuncionario() {
     if (!usuarioLogadoSessao) return;
 
-    let meta = parseInt(localStorage.getItem('bi_meta_individual')) || 30;
+    let meta = parseInt(localStorage.getItem('bi_meta_individual')) || 15;
     const elMeta = document.getElementById('estatisticas-meta-individual');
     if (elMeta) elMeta.textContent = meta;
 
@@ -200,36 +203,66 @@ async function renderizarEstatisticasFuncionario() {
 
         // Filtra as máquinas do funcionário logado e apenas status green ou red
         let maquinasFuncionario = [];
+        const labelCard1 = document.getElementById('estatisticas-label-card1');
         const labelConcluidas = document.getElementById('estatisticas-label-concluidas');
+        const labelCard3 = document.getElementById('estatisticas-label-card3');
+        const elConcluidas = document.getElementById('estatisticas-concluidas');
+        const diffContainer = document.getElementById('estatisticas-diff-container');
+        const elTaxa = document.getElementById('estatisticas-taxa');
+        const barraTaxa = document.getElementById('estatisticas-barra-taxa');
 
         if (usuarioLogadoSessao.perfil === 'recepcionista') {
             maquinasFuncionario = maquinas.filter(m => m.recepcionista && m.recepcionista.trim() === usuarioLogadoSessao.nome.trim() && (m.status === 'green' || m.status === 'red'));
-            if (labelConcluidas) labelConcluidas.textContent = 'Máquinas Recepcionadas';
+            const aguardandoRecepcao = maquinas.filter(m => m.status === 'purple').length;
+            const aprovadas = maquinasFuncionario.filter(m => m.status === 'green').length;
+            const rejeitadas = maquinasFuncionario.filter(m => m.status === 'red').length;
+            const totalInspecionado = maquinasFuncionario.length;
+            const taxaAprovacao = totalInspecionado > 0 ? Math.round((aprovadas / totalInspecionado) * 100) : 0;
+
+            if (labelCard1) labelCard1.textContent = 'Aguardando Recepção';
+            if (elMeta) elMeta.textContent = aguardandoRecepcao;
+
+            if (labelConcluidas) labelConcluidas.textContent = 'Total Inspecionado';
+            if (elConcluidas) elConcluidas.textContent = totalInspecionado;
+
+            if (diffContainer) {
+                diffContainer.innerHTML = `<span style="color: var(--status-green);">${aprovadas} Aprovadas</span> <span style="color: var(--text-muted);">·</span> <span style="color: var(--status-red);">${rejeitadas} Rejeitadas</span>`;
+            }
+
+            if (labelCard3) labelCard3.textContent = 'Taxa de Aprovação';
+            if (elTaxa) elTaxa.textContent = taxaAprovacao + '%';
+            if (barraTaxa) {
+                barraTaxa.style.width = Math.min(taxaAprovacao, 100) + '%';
+                barraTaxa.style.background = taxaAprovacao >= 70 ? 'var(--status-green)' : (taxaAprovacao >= 50 ? 'var(--status-yellow)' : 'var(--status-red)');
+            }
         } else {
             maquinasFuncionario = maquinas.filter(m => m.mantenedor && m.mantenedor.trim() === usuarioLogadoSessao.nome.trim() && (m.status === 'green' || m.status === 'red'));
+            if (labelCard1) labelCard1.textContent = 'Meta Individual Mensal';
             if (labelConcluidas) labelConcluidas.textContent = 'Máquinas Concluídas';
-        }
+            if (labelCard3) labelCard3.textContent = 'Taxa de Eficiência';
 
+            const concluidas = maquinasFuncionario.filter(m => m.status === 'green').length;
+            if (elConcluidas) elConcluidas.textContent = concluidas;
 
-        const concluidas = maquinasFuncionario.filter(m => m.status === 'green').length;
-        const elConcluidas = document.getElementById('estatisticas-concluidas');
-        if (elConcluidas) elConcluidas.textContent = concluidas;
+            if (diffContainer) {
+                const diff = concluidas - meta;
+                const positivo = diff >= 0;
+                const textoDiff = diff > 0
+                    ? `+${diff} acima da meta`
+                    : (diff === 0 ? 'Meta atingida!' : `${diff} para a meta`);
+                const corTexto = positivo ? 'var(--status-green)' : 'var(--status-red)';
+                const corFundo = positivo ? 'rgba(34, 197, 94, 0.14)' : 'rgba(239, 68, 68, 0.14)';
+                const corBorda = positivo ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)';
+                diffContainer.innerHTML = `<span style="display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; color: ${corTexto}; background: ${corFundo}; border: 1px solid ${corBorda};">${textoDiff}</span>`;
+            }
 
-        const diffContainer = document.getElementById('estatisticas-diff-container');
-        if (diffContainer) {
-            const diff = concluidas - meta;
-            diffContainer.textContent = diff >= 0 ? `+${diff}` : diff;
-            diffContainer.style.color = diff >= 0 ? 'var(--status-green)' : 'var(--status-red)';
-        }
-
-        let taxaEficiencia = meta > 0 ? Math.round((concluidas / meta) * 100) : 0;
-        const elTaxa = document.getElementById('estatisticas-taxa');
-        if (elTaxa) elTaxa.textContent = taxaEficiencia + '%';
-        
-        const barraTaxa = document.getElementById('estatisticas-barra-taxa');
-        if (barraTaxa) {
-            barraTaxa.style.width = Math.min(taxaEficiencia, 100) + '%';
-            barraTaxa.style.background = taxaEficiencia >= 100 ? 'var(--status-green)' : 'var(--accent-blue)';
+            let taxaEficiencia = meta > 0 ? Math.round((concluidas / meta) * 100) : 0;
+            if (elTaxa) elTaxa.textContent = taxaEficiencia + '%';
+            
+            if (barraTaxa) {
+                barraTaxa.style.width = Math.min(taxaEficiencia, 100) + '%';
+                barraTaxa.style.background = taxaEficiencia >= 100 ? 'var(--status-green)' : 'var(--accent-blue)';
+            }
         }
 
         if (tbody) {

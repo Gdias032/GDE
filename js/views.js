@@ -215,7 +215,7 @@ const views = {
             <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px;">
                 <div class="bi-card" style="flex: 1; min-width: 200px;">
                     <div class="bi-card-header">
-                        <h3 style="font-size: 14px; text-transform: none; color: var(--text-light);">Meta Individual Mensal</h3>
+                        <h3 id="estatisticas-label-card1" style="font-size: 14px; text-transform: none; color: var(--text-light);">Meta Individual Mensal</h3>
                         <div class="icon-circle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--status-yellow)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></div>
                     </div>
                     <div class="bi-stat-main" id="estatisticas-meta-individual">0</div>
@@ -225,12 +225,14 @@ const views = {
                         <h3 id="estatisticas-label-concluidas" style="font-size: 14px; text-transform: none; color: var(--text-light);">Máquinas Concluídas</h3>
                         <div class="icon-circle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--status-green)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></div>
                     </div>
-                    <div class="bi-stat-main" id="estatisticas-concluidas">0</div>
-                    <div id="estatisticas-diff-container" style="font-size: 14px; font-weight: bold; margin-top: 8px;"></div>
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 15px;">
+                        <div class="bi-stat-main" id="estatisticas-concluidas" style="margin-bottom: 0;">0</div>
+                        <div id="estatisticas-diff-container" style="font-size: 12px; font-weight: 600;"></div>
+                    </div>
                 </div>
                 <div class="bi-card" style="flex: 1; min-width: 200px;">
                     <div class="bi-card-header">
-                        <h3 style="font-size: 14px; text-transform: none; color: var(--text-light);">Taxa de Eficiência</h3>
+                        <h3 id="estatisticas-label-card3" style="font-size: 14px; text-transform: none; color: var(--text-light);">Taxa de Eficiência</h3>
                         <div class="icon-circle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
                     </div>
                     <div class="bi-stat-main" id="estatisticas-taxa">0%</div>
