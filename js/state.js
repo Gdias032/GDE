@@ -21,12 +21,19 @@ let todasAsMaquinas = [];
 let solicitacoesAutorizacao = [];
 let permissoesEspeciais = {};
 
+let carregandoDadosPromise = null;
+
 /**
  * Carrega todos os dados iniciais do Supabase após o login.
  * Usa joins (relações) para trazer os nomes vinculados aos IDs das tabelas.
+ * Evita requisições duplicadas em paralelo reutilizando a promessa em voo.
  */
 async function carregarDadosSupabase() {
-    // 1. Carregar Máquinas
+    if (carregandoDadosPromise) return carregandoDadosPromise;
+
+    carregandoDadosPromise = (async () => {
+        try {
+            // 1. Carregar Máquinas
     const { data: maqData, error: maqError } = await supabaseClient
         .from('maquinas_planta')
         .select(`
@@ -102,6 +109,12 @@ async function carregarDadosSupabase() {
 
     atualizarProgressoGeral();
     atualizarNotificacoesPendentes();
+        } finally {
+            carregandoDadosPromise = null;
+        }
+    })();
+
+    return carregandoDadosPromise;
 }
 
 /** Salva as alterações de uma MÁQUINA no Supabase (Update) */
@@ -155,6 +168,8 @@ function atualizarNotificacoesPendentes() {
 
 /** Inicializa os listeners do Supabase Realtime para que a tela atualize sozinha */
 let realtimeAtivo = false;
+let realtimeDebounceTimer = null;
+
 function inicializarRealtime() {
     if (realtimeAtivo) return; // Evita criar multiplos canais
     
@@ -163,23 +178,28 @@ function inicializarRealtime() {
         .on(
             'postgres_changes',
             { event: '*', schema: 'public' },
-            async (payload) => {
-                console.log('Mudança no banco detectada em tempo real!', payload);
-                // Busca os dados novos do banco
-                await carregarDadosSupabase();
-                
-                // Re-renderiza a tela atual para refletir as mudanças imediatamente
-                if (typeof renderizarMatriz === 'function' && document.getElementById('matriz-planta')) {
-                    renderizarMatriz();
-                    renderizarAnalisesRapidas();
-                }
-                if (typeof renderizarTabelaSolicitacoes === 'function' && document.getElementById('tabela-solicitacoes-body')) {
-                    renderizarTabelaSolicitacoes();
-                }
-                // Se a tela de recepção (máquina aberta) estiver visível e a máquina foi alterada, atualiza a tela
-                if (typeof configurarTelaRecepcao === 'function' && maquinaAtualId && document.getElementById('view-recepcao').style.display === 'block') {
-                    configurarTelaRecepcao();
-                }
+            (payload) => {
+                // Debounce de 350ms: agrupa rajadas de eventos em uma única atualização
+                if (realtimeDebounceTimer) clearTimeout(realtimeDebounceTimer);
+                realtimeDebounceTimer = setTimeout(async () => {
+                    if (typeof invalidarCacheBI === 'function') invalidarCacheBI();
+                    await carregarDadosSupabase();
+
+                    if (typeof renderizarMatriz === 'function' && document.getElementById('matriz-planta')) {
+                        renderizarMatriz();
+                        renderizarAnalisesRapidas();
+                    }
+                    if (typeof renderizarTabelaSolicitacoes === 'function' && document.getElementById('tabela-solicitacoes-body')) {
+                        renderizarTabelaSolicitacoes();
+                    }
+                    if (typeof renderizarRelatorios === 'function' && document.getElementById('barChartPrincipal')) {
+                        renderizarRelatorios();
+                    }
+                    const viewRecepcao = document.getElementById('view-recepcao');
+                    if (typeof configurarTelaRecepcao === 'function' && maquinaAtualId && viewRecepcao && viewRecepcao.style.display === 'block') {
+                        configurarTelaRecepcao();
+                    }
+                }, 350);
             }
         )
         .subscribe();

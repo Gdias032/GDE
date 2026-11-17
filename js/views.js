@@ -8,7 +8,7 @@
  */
 const views = {
     login: `
-    <div style="display: flex; justify-content: center; align-items: center; min-height: 85vh; width: 100%;">
+    <div class="luminous-login-stage">
         <div class="login-card">
             <h2 style="margin-bottom: 4px; color: var(--text-light); font-size: 22px; font-weight: 700;">Silicon Core V2</h2>
             <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 20px;">Autenticação de Acesso ao Sistema</p>

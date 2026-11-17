@@ -8,8 +8,14 @@
 let chartProgressoLinha = null;
 let chartPerformanceSemanas = null;
 let chartPanoramaAnual = null;
+let chartDonutPlanta = null;
 let panoramaHistoricoCache = [];
 let panoramaAnoAtual = 'todos';
+let biModoPrincipal = 'mensal';
+let biCalAno = new Date().getFullYear();
+let biCalMes = new Date().getMonth();
+let biCalInicializado = false;
+let biDiaSelecionado = null;
 const META_INDIVIDUAL_PADRAO = 15;
 let metaIndividual = parseInt(localStorage.getItem('bi_meta_individual')) || META_INDIVIDUAL_PADRAO;
 let metaMensal = parseInt(localStorage.getItem('bi_meta_mensal')) || (metaIndividual * 2);
@@ -37,6 +43,11 @@ let biCache = null;
 let biCacheTime = 0;
 let biCachePromise = null;
 const CACHE_TTL = 30000; // 30 seconds
+
+function invalidarCacheBI() {
+    biCache = null;
+    biCacheTime = 0;
+}
 
 async function fetchPlantaData(force = false) {
     const now = Date.now();
@@ -133,21 +144,32 @@ async function renderizarRelatorios() {
         sincronizarMetasPorEquipe()
     ]);
 
-    const totalMaquinas = maquinas.length || metaAnual; // usa a meta anual se não houver máquinas
+    const totalMaquinas = maquinas.length || metaAnual;
     const concluidas = maquinas.filter(m => m.status === 'green').length;
-    const emAndamento = maquinas.filter(m => m.status === 'yellow' || m.status === 'purple').length;
-    
+    const emProgresso = maquinas.filter(m => m.status === 'yellow').length;
+    const emRecepcao = maquinas.filter(m => m.status === 'purple').length;
+    const rejeitadas = maquinas.filter(m => m.status === 'red').length;
+    const emAndamento = emProgresso + emRecepcao;
+
     const pctTotal = Math.round((concluidas / totalMaquinas) * 100) || 0;
 
-    // Atualiza Top Row
-    const valProgresso = document.getElementById('bi-val-progresso');
-    if (valProgresso) {
-        valProgresso.textContent = pctTotal + '%';
-        document.getElementById('bi-bar-progresso').style.width = pctTotal + '%';
-        
-        document.getElementById('bi-val-concluido').textContent = concluidas;
-        document.getElementById('bi-val-andamento').textContent = emAndamento;
-        
+    const valConcluido = document.getElementById('bi-val-concluido');
+    if (valConcluido) {
+        valConcluido.textContent = concluidas;
+
+        const elSubTotal = document.getElementById('bi-val-total-planta');
+        if (elSubTotal) elSubTotal.textContent = `de ${totalMaquinas} máquinas (${pctTotal}%)`;
+
+        const elAndamento = document.getElementById('bi-val-andamento');
+        if (elAndamento) elAndamento.textContent = emProgresso;
+        const elRecepcao = document.getElementById('bi-val-recepcao');
+        if (elRecepcao) elRecepcao.textContent = emRecepcao;
+
+        const elResumo = document.getElementById('bi-resumo-texto');
+        if (elResumo) {
+            elResumo.textContent = `${concluidas} máquinas aprovadas (${pctTotal}% da planta), ${emRecepcao} aguardando recepção, ${emProgresso} em manutenção e ${rejeitadas} rejeitadas para ajuste.`;
+        }
+
         const inputMetaMensal = document.getElementById('bi-input-meta-mensal');
         if (inputMetaMensal) inputMetaMensal.value = metaMensal;
         const spanDiffMensal = document.getElementById('bi-diff-mensal');
@@ -162,20 +184,38 @@ async function renderizarRelatorios() {
             spanDiffAnual.innerHTML = formatarPillMeta(concluidas - metaAnual);
         }
 
-        const inputMetaIndividual = document.getElementById('bi-input-meta-individual');
-        if (inputMetaIndividual) inputMetaIndividual.value = metaIndividual;
+        const totalAvaliado = concluidas + rejeitadas;
+        const taxaAprov = totalAvaliado > 0 ? Math.round((concluidas / totalAvaliado) * 100) : 0;
+        const elScoreVal = document.getElementById('bi-score-val');
+        if (elScoreVal) elScoreVal.textContent = taxaAprov + '%';
+        const ticksEl = document.getElementById('bi-score-ticks');
+        if (ticksEl) {
+            const totalTicks = 24;
+            const ativos = Math.round((taxaAprov / 100) * totalTicks);
+            ticksEl.innerHTML = Array.from({ length: totalTicks }, (_, idx) =>
+                `<span class="bi-v2-score-tick ${idx < ativos ? 'active' : ''}"></span>`
+            ).join('');
+        }
 
-        // Progresso por Linha
-        renderizarProgressoPorLinha(maquinas);
+        if (!biCalInicializado) {
+            biCalInicializado = true;
+            const { data: ultEv } = await supabaseClient
+                .from('historico_maquinas')
+                .select('data_evento')
+                .order('data_evento', { ascending: false })
+                .limit(1);
+            if (ultEv && ultEv[0] && ultEv[0].data_evento) {
+                const dtUlt = new Date(ultEv[0].data_evento);
+                biCalAno = dtUlt.getFullYear();
+                biCalMes = dtUlt.getMonth();
+            }
+        }
 
-        // Ranking Mantenedores
+        renderizarDonutPlanta(maquinas);
         renderizarRankingMantenedores(maquinas);
-
-        // Esconder loader skeleton
+        renderizarCalendarioBI();
         esconderSkeletonBI();
-
-        // Performance Semanal
-        await renderizarPerformanceSemanal();
+        await renderizarGraficoPrincipalBI(maquinas);
     }
 }
 
@@ -275,6 +315,250 @@ function renderizarProgressoPorLinha(maquinas) {
                         }
                     }
                 }
+            }
+        }
+    });
+}
+
+function trocarModoPrincipalBI(modo) {
+    biModoPrincipal = modo;
+    biDiaSelecionado = null;
+    const info = document.getElementById('bi-cal-dia-info');
+    if (info) info.textContent = '';
+    document.querySelectorAll('#bi-v2-tabs .bi-v2-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-modo') === modo);
+    });
+    renderizarCalendarioBI();
+    renderizarGraficoPrincipalBI();
+}
+
+function mudarMesCalendarioBI(delta) {
+    biCalMes += delta;
+    if (biCalMes < 0) { biCalMes = 11; biCalAno--; }
+    else if (biCalMes > 11) { biCalMes = 0; biCalAno++; }
+    biDiaSelecionado = null;
+    const info = document.getElementById('bi-cal-dia-info');
+    if (info) info.textContent = '';
+    renderizarCalendarioBI();
+    if (biModoPrincipal === 'semanal' || biModoPrincipal === 'mensal') {
+        renderizarGraficoPrincipalBI();
+    }
+}
+
+async function selecionarDiaCalendarioBI(dia) {
+    biDiaSelecionado = (biDiaSelecionado === dia) ? null : dia;
+    renderizarCalendarioBI();
+    if (biDiaSelecionado) {
+        await atualizarInfoDiaCalendarioBI(dia);
+    } else {
+        const info = document.getElementById('bi-cal-dia-info');
+        if (info) info.textContent = '';
+    }
+    await renderizarGraficoPrincipalBI();
+}
+
+async function atualizarInfoDiaCalendarioBI(dia) {
+    const info = document.getElementById('bi-cal-dia-info');
+    if (!info) return;
+    const ini = new Date(biCalAno, biCalMes, dia, 0, 0, 0).toISOString();
+    const fim = new Date(biCalAno, biCalMes, dia, 23, 59, 59).toISOString();
+    const { count, error } = await supabaseClient
+        .from('historico_maquinas')
+        .select('id', { count: 'exact', head: true })
+        .gte('data_evento', ini)
+        .lte('data_evento', fim);
+    const dataFmt = `${String(dia).padStart(2, '0')}/${String(biCalMes + 1).padStart(2, '0')}/${biCalAno}`;
+    info.textContent = error ? '' : `${dataFmt}: ${count || 0} ocorrência(s) — clique no dia p/ limpar`;
+}
+
+function renderizarCalendarioBI() {
+    const titulo = document.getElementById('bi-cal-titulo');
+    const grid = document.getElementById('bi-cal-grid');
+    if (!titulo || !grid) return;
+
+    const mesesFull = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    titulo.textContent = `${mesesFull[biCalMes]}, ${biCalAno}`;
+
+    const dows = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+    const primeiroDia = new Date(biCalAno, biCalMes, 1).getDay();
+    const totalDias = new Date(biCalAno, biCalMes + 1, 0).getDate();
+    const hoje = new Date();
+    const ehMesAtual = (hoje.getFullYear() === biCalAno && hoje.getMonth() === biCalMes);
+
+    let html = dows.map(d => `<div class="bi-v2-cal-dow">${d}</div>`).join('');
+    for (let i = 0; i < primeiroDia; i++) {
+        html += `<div class="bi-v2-cal-day muted"></div>`;
+    }
+    for (let dia = 1; dia <= totalDias; dia++) {
+        const selecionado = biDiaSelecionado === dia || (!biDiaSelecionado && ehMesAtual && hoje.getDate() === dia);
+        html += `<div class="bi-v2-cal-day ${selecionado ? 'selected' : ''}" onclick="selecionarDiaCalendarioBI(${dia})">${dia}</div>`;
+    }
+    grid.innerHTML = html;
+}
+
+function renderizarDonutPlanta(maquinas) {
+    const canvas = document.getElementById('donutChartPlanta');
+    const legendEl = document.getElementById('bi-donut-legend');
+    const totalEl = document.getElementById('bi-donut-total');
+    if (!canvas || !legendEl) return;
+
+    const grupos = [
+        { label: 'Aprovadas', val: maquinas.filter(m => m.status === 'green').length, cor: '#22c55e' },
+        { label: 'Em Recepção', val: maquinas.filter(m => m.status === 'purple').length, cor: '#a855f7' },
+        { label: 'Em Progresso', val: maquinas.filter(m => m.status === 'yellow').length, cor: '#eab308' },
+        { label: 'Rejeitadas', val: maquinas.filter(m => m.status === 'red').length, cor: '#ef4444' },
+        { label: 'Não Iniciadas', val: maquinas.filter(m => m.status === 'dark').length, cor: '#52525b' }
+    ];
+    if (totalEl) totalEl.textContent = maquinas.length || 0;
+
+    legendEl.innerHTML = grupos.map(g => `
+        <div class="bi-v2-legend-item">
+            <span class="bi-v2-legend-left"><span class="bi-v2-legend-dot" style="background:${g.cor};"></span>${g.label}</span>
+            <strong style="color: var(--text-light);">${g.val}</strong>
+        </div>
+    `).join('');
+
+    if (chartDonutPlanta) chartDonutPlanta.destroy();
+    chartDonutPlanta = new Chart(canvas.getContext('2d'), {
+        type: 'doughnut',
+        data: {
+            labels: grupos.map(g => g.label),
+            datasets: [{
+                data: grupos.map(g => g.val),
+                backgroundColor: grupos.map(g => g.cor),
+                borderWidth: 0,
+                hoverOffset: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '72%',
+            plugins: { legend: { display: false } }
+        }
+    });
+}
+
+async function renderizarGraficoPrincipalBI(maquinasCache = null) {
+    const canvas = document.getElementById('barChartPrincipal');
+    if (!canvas) return;
+    const maquinas = maquinasCache || await fetchPlantaData();
+    const corTexto = getComputedStyle(document.body).getPropertyValue('--text-muted').trim() || '#a3a3a3';
+    const corGrade = 'rgba(148, 163, 184, 0.12)';
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    const corBarraBase = isLight ? 'rgba(10, 10, 10, 0.08)' : 'rgba(255, 255, 255, 0.08)';
+    const corBordaBase = isLight ? 'rgba(10, 10, 10, 0.22)' : 'rgba(255, 255, 255, 0.28)';
+
+    let labels = [];
+    let valores = [];
+    let datasetLabel = 'Aprovações';
+
+    if (biDiaSelecionado) {
+        const iniDia = new Date(biCalAno, biCalMes, biDiaSelecionado, 0, 0, 0).toISOString();
+        const fimDia = new Date(biCalAno, biCalMes, biDiaSelecionado, 23, 59, 59).toISOString();
+        const { data } = await supabaseClient
+            .from('historico_maquinas')
+            .select('acao_realizada')
+            .gte('data_evento', iniDia)
+            .lte('data_evento', fimDia);
+        const lista = data || [];
+        labels = ['Iniciadas', 'Finalizadas', 'Aprovadas', 'Rejeitadas'];
+        valores = [
+            lista.filter(e => e.acao_realizada === 'MANUTENCAO_INICIADA').length,
+            lista.filter(e => e.acao_realizada === 'MANUTENCAO_FINALIZADA').length,
+            lista.filter(e => e.acao_realizada === 'RECEPCAO_APROVADA').length,
+            lista.filter(e => e.acao_realizada === 'RECEPCAO_REJEITADA').length
+        ];
+        datasetLabel = `Dia ${String(biDiaSelecionado).padStart(2, '0')}/${String(biCalMes + 1).padStart(2, '0')}`;
+    } else if (biModoPrincipal === 'linha') {
+        const linhas = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+        labels = linhas.map(l => 'Linha ' + l);
+        valores = linhas.map(l => maquinas.filter(m => m.linha === l && m.status === 'green').length);
+    } else if (biModoPrincipal === 'semanal') {
+        const totalDias = new Date(biCalAno, biCalMes + 1, 0).getDate();
+        const iniMes = new Date(biCalAno, biCalMes, 1, 0, 0, 0).toISOString();
+        const fimMes = new Date(biCalAno, biCalMes, totalDias, 23, 59, 59).toISOString();
+        const { data } = await supabaseClient
+            .from('historico_maquinas')
+            .select('acao_realizada, data_evento')
+            .gte('data_evento', iniMes)
+            .lte('data_evento', fimMes);
+        const semanas = [0, 0, 0, 0, 0];
+        const lista = data || [];
+        const aprovadas = lista.filter(ev => ev.acao_realizada === 'RECEPCAO_APROVADA');
+        const fonte = aprovadas.length > 0 ? aprovadas : lista;
+        fonte.forEach(ev => {
+            const sem = Math.min(4, Math.floor((new Date(ev.data_evento).getDate() - 1) / 7));
+            semanas[sem]++;
+        });
+        if (fonte.length === 0) {
+            maquinas.forEach(m => {
+                if (m.data_fim) {
+                    const dt = new Date(m.data_fim);
+                    if (dt.getFullYear() === biCalAno && dt.getMonth() === biCalMes) {
+                        const sem = Math.min(4, Math.floor((dt.getDate() - 1) / 7));
+                        semanas[sem]++;
+                    }
+                }
+            });
+        }
+        labels = ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4', 'Sem 5'];
+        valores = semanas;
+    } else if (biModoPrincipal === 'mensal') {
+        const iniAno = new Date(biCalAno, 0, 1, 0, 0, 0).toISOString();
+        const fimAno = new Date(biCalAno, 11, 31, 23, 59, 59).toISOString();
+        const { data } = await supabaseClient
+            .from('historico_maquinas')
+            .select('acao_realizada, data_evento')
+            .eq('acao_realizada', 'RECEPCAO_APROVADA')
+            .gte('data_evento', iniAno)
+            .lte('data_evento', fimAno);
+        const meses = Array(12).fill(0);
+        (data || []).forEach(ev => { meses[new Date(ev.data_evento).getMonth()]++; });
+        labels = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+        valores = meses;
+    } else {
+        const { data } = await supabaseClient
+            .from('historico_maquinas')
+            .select('acao_realizada, data_evento')
+            .eq('acao_realizada', 'RECEPCAO_APROVADA');
+        const mapa = {};
+        const anoAtual = new Date().getFullYear();
+        for (let a = 2024; a <= anoAtual; a++) mapa[a] = 0;
+        (data || []).forEach(ev => {
+            const a = new Date(ev.data_evento).getFullYear();
+            mapa[a] = (mapa[a] || 0) + 1;
+        });
+        labels = Object.keys(mapa).sort();
+        valores = labels.map(k => mapa[k]);
+    }
+
+    const maxVal = Math.max(...valores, 0);
+    const bgColors = valores.map(v => (v > 0 && v === maxVal) ? '#f97316' : corBarraBase);
+    const borderColors = valores.map(v => (v > 0 && v === maxVal) ? '#fb923c' : corBordaBase);
+
+    if (chartProgressoLinha) chartProgressoLinha.destroy();
+    chartProgressoLinha = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: datasetLabel,
+                data: valores,
+                backgroundColor: bgColors,
+                borderColor: borderColors,
+                borderWidth: 1,
+                borderRadius: 10,
+                maxBarThickness: 38
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: corTexto, font: { size: 11 } } },
+                y: { beginAtZero: true, grid: { color: corGrade }, ticks: { color: corTexto, font: { size: 10 }, precision: 0 } }
             }
         }
     });
@@ -538,57 +822,70 @@ views.relatorios = `
             100% { background-position: -200% 0; }
         }
     </style>
-    <div class="bi-dashboard-grid">
-        <!-- Top Row -->
-        <div class="bi-top-row">
-            <!-- PROGRESSO TOTAL -->
+    <div class="bi-v2-grid">
+        <!-- Linha Superior: 2/3 Gráfico Principal + 1/3 Calendário & Metas -->
+        <div class="bi-v2-top">
             <div class="card bi-card">
-                <div class="bi-card-header">
-                    <h3>PROGRESSO TOTAL</h3>
-                    <div class="icon-circle">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                <div class="bi-card-header" style="flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <h3 style="font-size: 14px; text-transform: none; color: var(--text-muted); margin-bottom: 6px;">Evolução da Produção</h3>
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <div class="bi-stat-main" id="bi-val-concluido" style="margin-bottom: 0; font-size: 38px;">0</div>
+                            <span id="bi-diff-mensal"></span>
+                            <span id="bi-val-total-planta" style="font-size: 12px; color: var(--text-muted);"></span>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <div class="bi-v2-tabs" id="bi-v2-tabs">
+                            <button type="button" class="bi-v2-tab" data-modo="linha" onclick="trocarModoPrincipalBI('linha')">Por Linha</button>
+                            <button type="button" class="bi-v2-tab" data-modo="semanal" onclick="trocarModoPrincipalBI('semanal')">Semanal</button>
+                            <button type="button" class="bi-v2-tab active" data-modo="mensal" onclick="trocarModoPrincipalBI('mensal')">Mensal</button>
+                            <button type="button" class="bi-v2-tab" data-modo="anual" onclick="trocarModoPrincipalBI('anual')">Anual</button>
+                        </div>
+                        <button type="button" onclick="abrirPanoramaAnual()" title="Abrir Panorama Detalhado (2024 até hoje)" style="background: rgba(249, 115, 22, 0.14); border: 1px solid rgba(249, 115, 22, 0.35); color: var(--accent-blue); border-radius: 9999px; padding: 5px 11px; font-size: 11px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                            Panorama Anual
+                        </button>
                     </div>
                 </div>
-                <div class="bi-stat-main" id="bi-val-progresso">0%</div>
-                <div class="bi-progress-bar-container">
-                    <div class="bi-progress-fill" id="bi-bar-progresso" style="width: 0%;"></div>
-                </div>
-                <div class="bi-card-footer">
-                    <span>Métricas baseadas na planta inteira</span>
+                <div class="bi-chart-container" style="height: 235px; margin-top: 8px;">
+                    <canvas id="barChartPrincipal"></canvas>
                 </div>
             </div>
 
-            <!-- CONCLUÍDO -->
-            <div class="card bi-card">
-                <div class="bi-card-header">
-                    <h3>CONCLUÍDO</h3>
-                    <div class="icon-circle">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--status-yellow)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            <!-- Card Direito: Calendário & Metas -->
+            <div class="card bi-card" style="justify-content: space-between;">
+                <div>
+                    <div class="bi-v2-cal-header">
+                        <button type="button" class="bi-v2-cal-nav" onclick="mudarMesCalendarioBI(-1)" title="Mês anterior">&lsaquo;</button>
+                        <span id="bi-cal-titulo" style="font-size: 13px; font-weight: 600; color: var(--text-light);"></span>
+                        <button type="button" class="bi-v2-cal-nav" onclick="mudarMesCalendarioBI(1)" title="Próximo mês">&rsaquo;</button>
                     </div>
+                    <div class="bi-v2-cal-grid" id="bi-cal-grid"></div>
+                    <div id="bi-cal-dia-info" style="font-size: 11px; color: var(--text-muted); margin-top: 8px; text-align: center; min-height: 16px;"></div>
                 </div>
-                <div class="bi-stat-main" id="bi-val-concluido">0</div>
-                <div class="bi-sparkline" style="display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--border-color);">
+
+                <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 10px; margin-top: 10px; border-top: 1px solid var(--border-color);">
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                         <div style="display: flex; align-items: center; gap: 8px;">
-                            <label for="bi-input-meta-mensal" style="font-size: 11px; color: var(--text-muted); width: 72px; cursor: pointer;">Meta Mensal</label>
+                            <label for="bi-input-meta-mensal" style="font-size: 11px; color: var(--text-muted); width: 70px; cursor: pointer;">Meta Mensal</label>
                             <div class="bi-meta-control">
-                                <input type="number" min="1" id="bi-input-meta-mensal" class="bi-meta-input" title="Editar meta mensal" onchange="atualizarMetaMensal(this.value)" value="${metaMensal}">
+                                <input type="number" min="1" id="bi-input-meta-mensal" class="bi-meta-input" onchange="atualizarMetaMensal(this.value)" value="${metaMensal}">
                                 <div class="bi-meta-arrows">
-                                    <button type="button" class="bi-meta-arrow-btn" onclick="alterarMetaStep('mensal', 1)" title="Aumentar meta mensal" aria-label="Aumentar meta mensal"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="18 15 12 9 6 15"/></svg></button>
-                                    <button type="button" class="bi-meta-arrow-btn" onclick="alterarMetaStep('mensal', -1)" title="Diminuir meta mensal" aria-label="Diminuir meta mensal"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg></button>
+                                    <button type="button" class="bi-meta-arrow-btn" onclick="alterarMetaStep('mensal', 1)" aria-label="Aumentar meta mensal"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="18 15 12 9 6 15"/></svg></button>
+                                    <button type="button" class="bi-meta-arrow-btn" onclick="alterarMetaStep('mensal', -1)" aria-label="Diminuir meta mensal"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg></button>
                                 </div>
                             </div>
                         </div>
-                        <span id="bi-diff-mensal"></span>
                     </div>
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                         <div style="display: flex; align-items: center; gap: 8px;">
-                            <label for="bi-input-meta-anual" style="font-size: 11px; color: var(--text-muted); width: 72px; cursor: pointer;">Meta Anual</label>
+                            <label for="bi-input-meta-anual" style="font-size: 11px; color: var(--text-muted); width: 70px; cursor: pointer;">Meta Anual</label>
                             <div class="bi-meta-control">
-                                <input type="number" min="1" id="bi-input-meta-anual" class="bi-meta-input" title="Editar meta anual" onchange="atualizarMetaAnual(this.value)" value="${metaAnual}">
+                                <input type="number" min="1" id="bi-input-meta-anual" class="bi-meta-input" onchange="atualizarMetaAnual(this.value)" value="${metaAnual}">
                                 <div class="bi-meta-arrows">
-                                    <button type="button" class="bi-meta-arrow-btn" onclick="alterarMetaStep('anual', 1)" title="Aumentar meta anual" aria-label="Aumentar meta anual"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="18 15 12 9 6 15"/></svg></button>
-                                    <button type="button" class="bi-meta-arrow-btn" onclick="alterarMetaStep('anual', -1)" title="Diminuir meta anual" aria-label="Diminuir meta anual"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg></button>
+                                    <button type="button" class="bi-meta-arrow-btn" onclick="alterarMetaStep('anual', 1)" aria-label="Aumentar meta anual"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="18 15 12 9 6 15"/></svg></button>
+                                    <button type="button" class="bi-meta-arrow-btn" onclick="alterarMetaStep('anual', -1)" aria-label="Diminuir meta anual"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg></button>
                                 </div>
                             </div>
                         </div>
@@ -596,79 +893,68 @@ views.relatorios = `
                     </div>
                 </div>
             </div>
+        </div>
 
-            <!-- EM ANDAMENTO -->
+        <!-- Linha Inferior: 3 Colunas -->
+        <div class="bi-v2-bottom">
+            <!-- Coluna 1: Resumo do Setor -->
             <div class="card bi-card">
                 <div class="bi-card-header">
-                    <h3>EM ANDAMENTO</h3>
-                    <div class="icon-circle">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--status-yellow)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                    <h3 style="font-size: 15px; text-transform: none; color: var(--text-light); display: flex; align-items: center; gap: 6px;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><path d="M12 3l1.9 5.8a2 2 0 0 0 1.3 1.3L21 12l-5.8 1.9a2 2 0 0 0-1.3 1.3L12 21l-1.9-5.8a2 2 0 0 0-1.3-1.3L3 12l5.8-1.9a2 2 0 0 0 1.3-1.3z"/></svg>
+                        Resumo do Setor
+                    </h3>
+                    <span style="font-size: 11px; color: var(--text-muted);"><span class="luminous-live-dot"></span>Ao vivo</span>
+                </div>
+                <p id="bi-resumo-texto" style="font-size: 12px; color: var(--text-muted); line-height: 1.55; margin-bottom: 14px;">Carregando panorama da planta...</p>
+                <div class="bi-v2-mini-grid">
+                    <div class="bi-v2-mini-box">
+                        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">Em Progresso</div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span id="bi-val-andamento" style="font-size: 24px; font-weight: 700; color: var(--text-light);">0</span>
+                            <span class="badge yellow" style="font-size: 10px;">Manutenção</span>
+                        </div>
+                    </div>
+                    <div class="bi-v2-mini-box">
+                        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">Aguardando</div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span id="bi-val-recepcao" style="font-size: 24px; font-weight: 700; color: var(--text-light);">0</span>
+                            <span class="badge purple" style="font-size: 10px;">Recepção</span>
+                        </div>
                     </div>
                 </div>
-                <div class="bi-stat-main" id="bi-val-andamento">0</div>
-                <div class="bi-badges">
-                    <span class="badge dark">Verificações pendentes</span>
-                </div>
-                <div class="bi-card-footer justify-end">
-                    <span>Acompanhamento em tempo real</span>
-                </div>
             </div>
-        </div>
 
-        <!-- Middle Row -->
-        <div class="bi-middle-row">
-            <!-- Progresso por Linha -->
-            <div class="card bi-card" style="flex: 2;">
+            <!-- Coluna 2: Distribuição da Planta (Donut) -->
+            <div class="card bi-card">
                 <div class="bi-card-header">
-                    <h3 style="font-size: 16px; text-transform: none; color: var(--text-light);">Progresso por Linha</h3>
-                    <div class="bi-toggle-btns">
-                        <button class="active">Vol</button>
-                    </div>
+                    <h3 style="font-size: 15px; text-transform: none; color: var(--text-light);">Distribuição da Planta</h3>
+                    <span style="font-size: 11px; color: var(--text-muted);">Tempo real</span>
                 </div>
-                <div class="bi-chart-container">
-                    <canvas id="barChartLinhas"></canvas>
+                <div class="bi-v2-donut-wrap">
+                    <div class="bi-v2-donut-canvas">
+                        <canvas id="donutChartPlanta"></canvas>
+                        <div class="bi-v2-donut-center">
+                            <span id="bi-donut-total" style="font-size: 22px; font-weight: 700; color: var(--text-light); line-height: 1;">120</span>
+                            <span style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Total</span>
+                        </div>
+                    </div>
+                    <div class="bi-v2-legend" id="bi-donut-legend"></div>
                 </div>
             </div>
 
-            <!-- Ranking de Mantenedores -->
-            <div class="card bi-card" style="flex: 1;">
+            <!-- Coluna 3: Eficiência & Ranking -->
+            <div class="card bi-card">
                 <div class="bi-card-header">
-                    <h3 style="font-size: 16px; text-transform: none; color: var(--text-light);">Ranking de Mantenedores</h3>
-                    <div class="icon-circle">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--status-yellow)" stroke-width="2"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10"/><path d="M17 4v8a5 5 0 0 1-10 0V4"/></svg>
-                    </div>
+                    <h3 style="font-size: 15px; text-transform: none; color: var(--text-light);">Eficiência & Ranking</h3>
+                    <button type="button" onclick="navigateTo('rankingMantenedores')" style="background: none; border: none; color: var(--accent-blue); font-size: 11px; font-weight: 600; cursor: pointer;">Ver tudo &nearr;</button>
                 </div>
-                <div class="bi-ranking-list" id="bi-ranking-list">
-                    <!-- Dinâmico -->
+                <div class="bi-v2-score-bar">
+                    <span style="font-size: 11px; color: var(--text-muted); white-space: nowrap;">Aprovação</span>
+                    <div class="bi-v2-score-ticks" id="bi-score-ticks"></div>
+                    <span id="bi-score-val" style="font-size: 12px; font-weight: 700; color: var(--text-light);">0%</span>
                 </div>
-                <button class="btn-cancelar" style="width: 100%; margin-top: 25px;" onclick="navigateTo('rankingMantenedores')">Ver Lista Completa</button>
-            </div>
-        </div>
-
-        <!-- Bottom Row -->
-        <div class="bi-bottom-row">
-            <div class="card bi-card" style="width: 100%;">
-                <div class="bi-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                    <h3 style="font-size: 16px; text-transform: none; color: var(--text-light);">Performance Semanal da Produção</h3>
-                    <div style="display: flex; gap: 10px; position: relative;">
-                        <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-muted); cursor: pointer; margin-right: 5px;">
-                            <input type="checkbox" id="bi-check-fds" onchange="localStorage.setItem('bi_incluir_fds', this.checked); renderizarPerformanceSemanal();" ${localStorage.getItem('bi_incluir_fds') === 'true' ? 'checked' : ''} style="accent-color: var(--accent-blue);"> Incluir FDS
-                        </label>
-                        <input type="month" id="bi-input-mes" title="Filtrar por Mês" onchange="renderizarPerformanceSemanal()" style="background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; padding: 4px 8px; font-size: 13px; outline: none; cursor: pointer;">
-                        
-                        <button type="button" onclick="abrirPanoramaAnual()" title="Ver histórico anual (2024 até hoje)" style="background: rgba(59, 130, 246, 0.14); border: 1px solid rgba(59, 130, 246, 0.35); color: var(--accent-blue); border-radius: 6px; padding: 4px 10px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-                            Panorama Anual
-                        </button>
-                        <button onclick="document.getElementById('bi-input-dia').showPicker()" title="Ver dia exato" style="background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 4px; padding: 4px 8px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                        </button>
-                        <input type="date" id="bi-input-dia" onchange="renderizarPerformanceSemanal(true)" style="position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; right: 0; top: 0;">
-                    </div>
-                </div>
-                <div class="bi-chart-container" style="height: 200px;">
-                    <canvas id="barChartSemanas"></canvas>
-                </div>
+                <div class="bi-ranking-list" id="bi-ranking-list" style="flex: 1;"></div>
             </div>
         </div>
     </div>

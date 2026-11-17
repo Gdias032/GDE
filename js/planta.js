@@ -45,17 +45,18 @@ function renderizarMatriz() {
     matriz.addEventListener('mouseover', function (e) {
         if (e.target.classList.contains('celula')) {
             const el = e.target;
+            const statusClass = ['dark', 'yellow', 'purple', 'green', 'red'].includes(el.classList[1]) ? el.classList[1] : 'dark';
             tooltip.innerHTML = `
             <div class="tooltip-header">
-                <span>Máquina ${el.dataset.id}</span> <span class="badge ${el.classList[1]}" style="font-size: 10px;">${el.dataset.andamento}</span>
+                <span>Máquina ${escapeHtml(el.dataset.id)}</span> <span class="badge ${statusClass}" style="font-size: 10px;">${escapeHtml(el.dataset.andamento)}</span>
             </div>
             <div class="tooltip-body">
-                <p><strong>Mantenedor:</strong> ${el.dataset.realizou}</p>
-                <p><strong>Recepcionado por:</strong> ${el.dataset.recepcionou}</p>
-                <p><strong>Data de Início:</strong> ${el.dataset.datainicio}</p>
-                <p><strong>Data de Término:</strong> ${el.dataset.datafim}</p>
+                <p><strong>Mantenedor:</strong> ${escapeHtml(el.dataset.realizou)}</p>
+                <p><strong>Recepcionado por:</strong> ${escapeHtml(el.dataset.recepcionou)}</p>
+                <p><strong>Data de Início:</strong> ${escapeHtml(el.dataset.datainicio)}</p>
+                <p><strong>Data de Término:</strong> ${escapeHtml(el.dataset.datafim)}</p>
                 <div class="tooltip-obs-box">
-                    <strong>Observação:</strong><br> ${el.dataset.obs}
+                    <strong>Observação:</strong><br> ${escapeHtml(el.dataset.obs)}
                 </div>
             </div>`;
             tooltip.style.display = 'block';

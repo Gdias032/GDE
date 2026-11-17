@@ -84,9 +84,52 @@ ALTER TABLE historico_maquinas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE solicitacoes_permissao ENABLE ROW LEVEL SECURITY;
 ALTER TABLE permissoes_especiais ENABLE ROW LEVEL SECURITY;
 
--- Políticas Gerais (Permitir acesso total apenas para usuários autenticados no Supabase)
-CREATE POLICY "Acesso total usuarios autenticados" ON usuarios FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "Acesso total maquinas autenticadas" ON maquinas_planta FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "Acesso total historico autenticados" ON historico_maquinas FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "Acesso total solicitacoes autenticadas" ON solicitacoes_permissao FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "Acesso total permissoes autenticadas" ON permissoes_especiais FOR ALL USING (auth.role() = 'authenticated');
+-- Função auxiliar para checar o perfil do usuário logado sem recursão de RLS
+CREATE OR REPLACE FUNCTION get_meu_perfil()
+RETURNS perfil_acesso_enum
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT perfil_acesso FROM usuarios WHERE id = auth.uid();
+$$;
+
+-- Políticas por Perfil (Segurança no Banco)
+CREATE POLICY "usuarios_select_auth" ON usuarios
+    FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY "usuarios_admin_insert" ON usuarios
+    FOR INSERT WITH CHECK (get_meu_perfil() = 'ADMIN');
+CREATE POLICY "usuarios_update_proprio_ou_admin" ON usuarios
+    FOR UPDATE USING (auth.uid() = id OR get_meu_perfil() = 'ADMIN')
+    WITH CHECK (get_meu_perfil() = 'ADMIN' OR (auth.uid() = id AND perfil_acesso = get_meu_perfil()));
+CREATE POLICY "usuarios_admin_delete" ON usuarios
+    FOR DELETE USING (get_meu_perfil() = 'ADMIN');
+
+CREATE POLICY "maquinas_select_auth" ON maquinas_planta
+    FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY "maquinas_update_auth" ON maquinas_planta
+    FOR UPDATE USING (auth.role() = 'authenticated');
+CREATE POLICY "maquinas_admin_insert" ON maquinas_planta
+    FOR INSERT WITH CHECK (get_meu_perfil() = 'ADMIN');
+CREATE POLICY "maquinas_admin_delete" ON maquinas_planta
+    FOR DELETE USING (get_meu_perfil() = 'ADMIN');
+
+CREATE POLICY "historico_select_auth" ON historico_maquinas
+    FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY "historico_insert_auth" ON historico_maquinas
+    FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "solicitacoes_select_auth" ON solicitacoes_permissao
+    FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY "solicitacoes_insert_proprio" ON solicitacoes_permissao
+    FOR INSERT WITH CHECK (auth.uid() = id_solicitante);
+CREATE POLICY "solicitacoes_admin_update" ON solicitacoes_permissao
+    FOR UPDATE USING (get_meu_perfil() = 'ADMIN');
+CREATE POLICY "solicitacoes_admin_delete" ON solicitacoes_permissao
+    FOR DELETE USING (get_meu_perfil() = 'ADMIN');
+
+CREATE POLICY "permissoes_select_auth" ON permissoes_especiais
+    FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY "permissoes_admin_all" ON permissoes_especiais
+    FOR ALL USING (get_meu_perfil() = 'ADMIN') WITH CHECK (get_meu_perfil() = 'ADMIN');

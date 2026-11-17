@@ -36,7 +36,8 @@ INSERT INTO bi_catalogo (fonte, fonte_rotulo, coluna, coluna_rotulo, papel, orde
 ('vw_bi_eventos', 'Histórico de Ocorrências', 'acao', 'Ação Realizada', 'dimensao', 11),
 ('vw_bi_eventos', 'Histórico de Ocorrências', 'eventos', 'Qtd de Eventos', 'metrica', 12);
 
-GRANT SELECT ON bi_catalogo TO authenticated, anon;
+REVOKE ALL ON bi_catalogo FROM anon;
+GRANT SELECT ON bi_catalogo TO authenticated;
 
 
 -- ----------------------------------------------------------------------------
@@ -58,7 +59,8 @@ FROM maquinas_planta m
 LEFT JOIN usuarios u_mant ON m.id_mantenedor_atual = u_mant.id
 LEFT JOIN usuarios u_recep ON m.id_recepcionista_atual = u_recep.id;
 
-GRANT SELECT ON vw_bi_planta TO authenticated, anon;
+REVOKE ALL ON vw_bi_planta FROM anon;
+GRANT SELECT ON vw_bi_planta TO authenticated;
 
 
 -- ----------------------------------------------------------------------------
@@ -78,7 +80,8 @@ SELECT
 FROM historico_maquinas h
 LEFT JOIN usuarios u ON h.id_usuario = u.id;
 
-GRANT SELECT ON vw_bi_eventos TO authenticated, anon;
+REVOKE ALL ON vw_bi_eventos FROM anon;
+GRANT SELECT ON vw_bi_eventos TO authenticated;
 
 
 -- ----------------------------------------------------------------------------
