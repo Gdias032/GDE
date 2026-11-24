@@ -147,6 +147,27 @@ async function salvarMaquinaSupabase(maquinaId) {
     return true;
 }
 
+/** Registra uma transição de status na tabela historico_maquinas (para BI e Calendário). */
+async function registrarHistoricoMaquina({ idMaquina, idUsuario, statusAnterior, statusNovo, acao, observacao = '' }) {
+    if (!idMaquina || !statusNovo || !acao) return false;
+    const { error } = await supabaseClient
+        .from('historico_maquinas')
+        .insert({
+            id_maquina: idMaquina,
+            id_usuario: idUsuario || usuarioLogadoSessao?.id || null,
+            status_anterior: statusAnterior || null,
+            status_novo: statusNovo,
+            acao_realizada: acao,
+            observacao: observacao || null
+        });
+    if (error) {
+        console.error('Erro ao registrar histórico da máquina:', error);
+        return false;
+    }
+    if (typeof invalidarCacheBI === 'function') invalidarCacheBI();
+    return true;
+}
+
 /** Atualiza a barra/percentual de progresso geral (máquinas aprovadas / total). */
 function atualizarProgressoGeral() {
     if (todasAsMaquinas.length === 0) return;

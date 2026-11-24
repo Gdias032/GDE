@@ -124,6 +124,7 @@ async function iniciarServico() {
     const maq = todasAsMaquinas.find(m => m.id === maquinaAtualId);
     if (!maq) return;
 
+    const statusAnterior = maq.status;
     maq.status = 'yellow';
     maq.andamento = 'Em Progresso';
     maq.dataInicio = new Date().toLocaleDateString('pt-BR');
@@ -134,6 +135,14 @@ async function iniciarServico() {
 
     const sucesso = await salvarMaquinaSupabase(maq.id);
     if (sucesso) {
+        await registrarHistoricoMaquina({
+            idMaquina: maq.id,
+            idUsuario: maq.realizouId,
+            statusAnterior,
+            statusNovo: maq.status,
+            acao: 'MANUTENCAO_INICIADA',
+            observacao: maq.obs || 'Manutenção iniciada'
+        });
         configurarTelaRecepcao();
     }
 }
@@ -162,6 +171,7 @@ async function pararServico() {
     const maq = todasAsMaquinas.find(m => m.id === maquinaAtualId);
     if (!maq) return;
 
+    const statusAnterior = maq.status;
     maq.status = 'purple';
     maq.andamento = 'Aguardando Recepção';
     maq.dataFim = new Date().toLocaleDateString('pt-BR');
@@ -170,6 +180,14 @@ async function pararServico() {
 
     const sucesso = await salvarMaquinaSupabase(maq.id);
     if (sucesso) {
+        await registrarHistoricoMaquina({
+            idMaquina: maq.id,
+            idUsuario: maq.realizouId,
+            statusAnterior,
+            statusNovo: maq.status,
+            acao: 'MANUTENCAO_FINALIZADA',
+            observacao: maq.obs || 'Manutenção finalizada e enviada para recepção'
+        });
         mostrarAlertaModal('Serviço Concluído', `Atuação finalizada na Máquina ${maq.id}! Status alterado para: Aguardando Recepção.`, 'success');
         navigateTo('planta');
     }
@@ -198,6 +216,7 @@ async function salvarRecepcao() {
     const maq = todasAsMaquinas.find(m => m.id === maquinaAtualId);
     if (!maq) return;
 
+    const statusAnterior = maq.status;
     const totalCheckboxes = document.querySelectorAll('.chk-recepcao').length;
     const checkboxesMarcados = document.querySelectorAll('.chk-recepcao:checked').length;
 
@@ -215,6 +234,14 @@ async function salvarRecepcao() {
 
     const sucesso = await salvarMaquinaSupabase(maq.id);
     if (sucesso) {
+        await registrarHistoricoMaquina({
+            idMaquina: maq.id,
+            idUsuario: maq.recepcionouId,
+            statusAnterior,
+            statusNovo: maq.status,
+            acao: maq.status === 'green' ? 'RECEPCAO_APROVADA' : 'RECEPCAO_REJEITADA',
+            observacao: maq.obs
+        });
         if (maq.status === 'green') {
             mostrarAlertaModal('Recepção Aprovada', `Recepção da Máquina ${maq.id} APROVADA por ${maq.recepcionou}!`, 'success');
         } else {
@@ -244,12 +271,21 @@ async function reabrirRecepcaoRejeitada() {
     const maq = todasAsMaquinas.find(m => m.id === maquinaAtualId);
     if (!maq) return;
 
+    const statusAnterior = maq.status;
     maq.status = 'purple';
     maq.andamento = 'Aguardando Recepção';
     maq.obs += ` [Status reaberto pelo Admin em ${new Date().toLocaleDateString('pt-BR')}]`;
 
     const sucesso = await salvarMaquinaSupabase(maq.id);
     if (sucesso) {
+        await registrarHistoricoMaquina({
+            idMaquina: maq.id,
+            idUsuario: usuarioLogadoSessao?.id || null,
+            statusAnterior,
+            statusNovo: maq.status,
+            acao: 'RECEPCAO_REABERTA',
+            observacao: maq.obs
+        });
         mostrarAlertaModal('Status Alterado', `A Máquina ${maq.id} foi reaberta e retornou ao status "Aguardando Recepção".`, 'info');
         navigateTo('planta');
     }

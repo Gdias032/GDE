@@ -17,6 +17,9 @@ function aplicarTema(tema) {
 function alternarTema() {
     const temaAtual = document.documentElement.getAttribute('data-theme') || 'dark';
     aplicarTema(temaAtual === 'dark' ? 'light' : 'dark');
+    if (typeof renderizarRelatorios === 'function' && document.getElementById('barChartPrincipal')) {
+        renderizarRelatorios();
+    }
 }
 
 function inicializarTema() {

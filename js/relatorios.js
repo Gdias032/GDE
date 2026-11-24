@@ -17,25 +17,64 @@ let biCalMes = new Date().getMonth();
 let biCalInicializado = false;
 let biDiaSelecionado = null;
 const META_INDIVIDUAL_PADRAO = 15;
+let qtdMantenedoresAtivos = 2;
 let metaIndividual = parseInt(localStorage.getItem('bi_meta_individual')) || META_INDIVIDUAL_PADRAO;
 let metaMensal = parseInt(localStorage.getItem('bi_meta_mensal')) || (metaIndividual * 2);
 let metaAnual = parseInt(localStorage.getItem('bi_meta_anual')) || (metaMensal * 12);
 
 /** Ajusta metas padrão (quando não há valor manual salvo) conforme o nº de mantenedores ativos. */
 async function sincronizarMetasPorEquipe() {
-    const temMensalSalva = localStorage.getItem('bi_meta_mensal') !== null;
-    const temAnualSalva = localStorage.getItem('bi_meta_anual') !== null;
-    if (temMensalSalva && temAnualSalva) return;
-
     const { count, error } = await supabaseClient
         .from('usuarios')
         .select('id', { count: 'exact', head: true })
         .eq('ativo', true)
         .eq('perfil_acesso', 'MANTENEDOR');
 
-    const qtdMantenedores = (!error && count && count > 0) ? count : 1;
-    if (!temMensalSalva) metaMensal = qtdMantenedores * metaIndividual;
-    if (!temAnualSalva) metaAnual = metaMensal * 12;
+    qtdMantenedoresAtivos = (!error && count && count > 0) ? count : 1;
+
+    const temMensalSalva = localStorage.getItem('bi_meta_mensal') !== null;
+    const temAnualSalva = localStorage.getItem('bi_meta_anual') !== null;
+    const temIndivSalva = localStorage.getItem('bi_meta_individual') !== null;
+
+    if (!temMensalSalva) {
+        metaMensal = qtdMantenedoresAtivos * (temIndivSalva ? metaIndividual : META_INDIVIDUAL_PADRAO);
+    }
+    if (!temIndivSalva || temMensalSalva) {
+        metaIndividual = Math.max(1, Math.round(metaMensal / qtdMantenedoresAtivos));
+    }
+    if (!temAnualSalva) {
+        metaAnual = metaMensal * 12;
+    }
+}
+
+/** Busca todo o histórico paginando em blocos de 1000 para não truncar no limite padrão do Supabase. */
+async function buscarTodoHistoricoBI(filtroAcao = null, dataIni = null, dataFim = null) {
+    const todos = [];
+    const pageSize = 1000;
+    let from = 0;
+
+    while (true) {
+        let query = supabaseClient
+            .from('historico_maquinas')
+            .select('acao_realizada, data_evento')
+            .order('data_evento', { ascending: true })
+            .range(from, from + pageSize - 1);
+
+        if (filtroAcao) query = query.eq('acao_realizada', filtroAcao);
+        if (dataIni) query = query.gte('data_evento', dataIni);
+        if (dataFim) query = query.lte('data_evento', dataFim);
+
+        const { data, error } = await query;
+        if (error) {
+            console.error('Erro ao paginar histórico:', error);
+            break;
+        }
+        if (!data || data.length === 0) break;
+        todos.push(...data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+    }
+    return todos;
 }
 
 // -- Caching Layer --
@@ -98,8 +137,10 @@ function esconderSkeletonBI() {
 }
 
 async function atualizarMetaMensal(valor) {
-    metaMensal = parseInt(valor) || (metaIndividual * 2);
+    metaMensal = Math.max(1, parseInt(valor) || (META_INDIVIDUAL_PADRAO * qtdMantenedoresAtivos));
+    metaIndividual = Math.max(1, Math.round(metaMensal / Math.max(1, qtdMantenedoresAtivos)));
     localStorage.setItem('bi_meta_mensal', metaMensal);
+    localStorage.setItem('bi_meta_individual', metaIndividual);
     renderizarRelatorios(); // re-renderiza para atualizar os cálculos
 }
 
@@ -507,25 +548,17 @@ async function renderizarGraficoPrincipalBI(maquinasCache = null) {
     } else if (biModoPrincipal === 'mensal') {
         const iniAno = new Date(biCalAno, 0, 1, 0, 0, 0).toISOString();
         const fimAno = new Date(biCalAno, 11, 31, 23, 59, 59).toISOString();
-        const { data } = await supabaseClient
-            .from('historico_maquinas')
-            .select('acao_realizada, data_evento')
-            .eq('acao_realizada', 'RECEPCAO_APROVADA')
-            .gte('data_evento', iniAno)
-            .lte('data_evento', fimAno);
+        const data = await buscarTodoHistoricoBI('RECEPCAO_APROVADA', iniAno, fimAno);
         const meses = Array(12).fill(0);
-        (data || []).forEach(ev => { meses[new Date(ev.data_evento).getMonth()]++; });
+        data.forEach(ev => { meses[new Date(ev.data_evento).getMonth()]++; });
         labels = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
         valores = meses;
     } else {
-        const { data } = await supabaseClient
-            .from('historico_maquinas')
-            .select('acao_realizada, data_evento')
-            .eq('acao_realizada', 'RECEPCAO_APROVADA');
+        const data = await buscarTodoHistoricoBI('RECEPCAO_APROVADA');
         const mapa = {};
         const anoAtual = new Date().getFullYear();
         for (let a = 2024; a <= anoAtual; a++) mapa[a] = 0;
-        (data || []).forEach(ev => {
+        data.forEach(ev => {
             const a = new Date(ev.data_evento).getFullYear();
             mapa[a] = (mapa[a] || 0) + 1;
         });
@@ -983,9 +1016,13 @@ async function renderizarRankingCompleto() {
     // Estado de carregamento
     tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;"><div class="skeleton" style="width: 100%; height: 20px;"></div></td></tr>';
 
-    // Busca os dados das máquinas usando cache
-    const maquinas = await fetchPlantaData();
-    const { data: usuariosData } = await supabaseClient.from('usuarios').select('nome_completo, matricula');
+    // Busca os dados das máquinas usando cache e sincroniza metas com a equipe
+    const [maquinas, usuariosResp] = await Promise.all([
+        fetchPlantaData(),
+        supabaseClient.from('usuarios').select('nome_completo, matricula'),
+        sincronizarMetasPorEquipe()
+    ]);
+    const usuariosData = usuariosResp.data;
 
     const usuarios = usuariosData || [];
     
@@ -1019,8 +1056,8 @@ async function renderizarRankingCompleto() {
         return;
     }
 
-    // A meta individual é usada para calcular a Eficiência
-    let meta = parseInt(localStorage.getItem('bi_meta_individual')) || META_INDIVIDUAL_PADRAO;
+    // A meta individual é usada para calcular a Eficiência (sincronizada com Meta Mensal / nº mantenedores)
+    let meta = metaIndividual;
 
     let html = '';
     ranking.forEach((item, index) => {
@@ -1064,16 +1101,7 @@ async function abrirPanoramaAnual() {
     if (tabsEl) tabsEl.innerHTML = '<span style="font-size: 12px; color: var(--text-muted);">Carregando histórico...</span>';
     if (resumoEl) resumoEl.innerHTML = '';
 
-    const { data, error } = await supabaseClient
-        .from('historico_maquinas')
-        .select('acao_realizada, data_evento')
-        .order('data_evento', { ascending: true });
-
-    if (error) {
-        console.error('Erro ao carregar panorama anual:', error);
-        if (tabsEl) tabsEl.innerHTML = '<span style="font-size: 12px; color: var(--status-red);">Erro ao carregar histórico.</span>';
-        return;
-    }
+    const data = await buscarTodoHistoricoBI();
 
     panoramaHistoricoCache = data || [];
     const anosSet = new Set();

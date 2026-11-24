@@ -2458,3 +2458,72 @@ h1, h2, h3,
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- Correções de Responsividade (Laptops 1280-1366px) e Modo Claro ---------- */
+.main-wrapper,
+#app-content,
+.bi-v2-grid,
+.bi-v2-top > *,
+.bi-v2-bottom > * {
+  min-width: 0;
+}
+
+@media (max-width: 1320px) {
+  .bi-v2-bottom {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .bi-v2-bottom > :last-child {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 1150px) {
+  .bi-v2-top {
+    grid-template-columns: 1fr;
+  }
+  .bi-v2-bottom {
+    grid-template-columns: 1fr;
+  }
+  .bi-v2-bottom > :last-child {
+    grid-column: span 1;
+  }
+  .top-navbar {
+    padding: 0 16px;
+  }
+  .progress-bar .bar {
+    width: 80px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .progress-bar {
+    display: none;
+  }
+}
+
+[data-theme="light"] .top-menu a.active {
+  background: rgba(249, 115, 22, 0.12);
+  border: 1px solid rgba(249, 115, 22, 0.25);
+  border-radius: 9999px;
+  color: #c2410c;
+}
+
+[data-theme="light"] .top-menu a.active::after {
+  background-color: #f97316;
+  box-shadow: 0 0 8px rgba(249, 115, 22, 0.5);
+}
+
+[data-theme="light"] .btn-cancelar {
+  background: rgba(10, 10, 10, 0.05);
+  border: 1px solid rgba(10, 10, 10, 0.14);
+  color: #262626;
+}
+
+[data-theme="light"] .bi-v2-tab.active {
+  background: #0a0a0a;
+  color: #ffffff;
+}
+
+[data-theme="light"] .bi-card:hover {
+  border-color: rgba(249, 115, 22, 0.35);
+}

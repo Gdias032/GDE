@@ -183,7 +183,12 @@ async function removerFotoPerfil() {
 async function renderizarEstatisticasFuncionario() {
     if (!usuarioLogadoSessao) return;
 
-    let meta = parseInt(localStorage.getItem('bi_meta_individual')) || 15;
+    if (typeof sincronizarMetasPorEquipe === 'function') {
+        await sincronizarMetasPorEquipe();
+    }
+    let meta = (typeof metaIndividual !== 'undefined' && metaIndividual > 0)
+        ? metaIndividual
+        : (parseInt(localStorage.getItem('bi_meta_individual')) || 15);
     const elMeta = document.getElementById('estatisticas-meta-individual');
     if (elMeta) elMeta.textContent = meta;
 
